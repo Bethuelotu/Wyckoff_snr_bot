@@ -3958,7 +3958,7 @@ except ImportError:
 # ════════════════════════════════════════════════════════════════════
 
 # Set this to your webapp API endpoint (or leave blank to disable push)
-WEBAPP_API_URL = ""   # e.g. "https://your-webapp.onrender.com/api/bot/update"
+WEBAPP_API_URL = "https://project--d0c75dff-8649-4cc5-8dad-c578ae78b21c.lovable.app/api/public/bot-ingest"   # e.g. "https://your-webapp.onrender.com/api/bot/update"
 
 def push_all_data(data: Dict) -> None:
     """
