@@ -4219,8 +4219,9 @@ import os as _os
 # Your webapp must send this in the X-Bot-Secret header.
 # If not set, session endpoints are disabled (safe default).
 BOT_SECRET: str = _os.environ.get("BOT_SECRET", "")
-
+API_KEY:    str = _os.environ.get("API_KEY", "your-secret
 # Live session state — held in memory only
+SESSION_ACTIVE = False
 ACTIVE_SESSION: Dict = {
     "active":           False,
     "broker":           None,   # live MetaAPIBroker instance
@@ -4291,26 +4292,28 @@ def run_session_bot_loop() -> None:
       - Automatically reverts to idle on session end or broker error
     The Flask thread writes ACTIVE_SESSION; this thread reads it.
     """
-    log_info("Session bot loop started — waiting for session...")
-    idle_broker = PaperBroker()   # dormant broker used between sessions
+        log_info("Session bot loop started — scanning signals always...")
+    signal_broker = YFinanceBroker()   # always-on broker for signal scanning
 
     all_signals: List[Dict] = _load_json(CONFIG["signals_file"], [])
     scan_count = 0
 
     while True:
         try:
-            # ── Check for active session ──────────────────────────────
-            broker = _get_active_broker()
+            # ── Determine mode for this cycle ─────────────────────────
+            live_broker = _get_active_broker()
 
-            if broker is None:
-                # No active session — idle, do nothing
-                log_info("No active session. Bot idle. Waiting 30s...")
-                time.sleep(30)
-                continue
+            if live_broker is not None and SESSION_ACTIVE:
+                broker = live_broker   # live trading with MT5
+                log_info("[LIVE] Session active — using MetaAPI broker")
+            else:
+                broker = signal_broker   # signal-only using Yahoo Finance
+                log_info("[SIGNAL_ONLY] No active session — scanning signals only")
 
-            # ── Active session: run one full scan cycle ───────────────
+            # ── Always scan ───────────────────────────────────────────
             require_internet()
-            update_equity(broker)
+            if SESSION_ACTIVE:
+                update_equity(broker)
 
             # ── Sync lifecycle state with broker ──────────────────────
             sync_lifecycle_with_broker(broker)
@@ -4407,10 +4410,23 @@ def run_session_bot_loop() -> None:
                         cycle_data["signals"].append(sig_dict)
                         _save_json(CONFIG["signals_file"], all_signals[-100:])
 
-                        if not can_trade:
+                        # Always push signal to webapp regardless of mode
+                        sig_dict = signal.to_dict()
+                        push_all_data({
+                            "signals":  [sig_dict],
+                            "analysis": [analysis_entry],
+                            "trades":   [],
+                            "metrics":  {},
+                            "event":    {"type": "NEW_SIGNAL", "signal": sig_dict},
+                        })
+
+                        if not SESSION_ACTIVE:
+                            # Signal-only mode — no trade execution
+                            log_info(f"  [{symbol}] SIGNAL_ONLY — pushed to webapp, no trade placed.")
+                        elif not can_trade:
                             log_info(f"  [{symbol}] Max trades reached — queued.")
                         elif not conf["valid"]:
-                            log_info(f"  [{symbol}] Confluence too weak — skipping.")
+                            log_info(f"  [{symbol}] Confluence weak — skipping.")
                         elif not entry_analysis["valid"]:
                             log_info(f"  [{symbol}] No entry trigger yet — waiting.")
                         else:
@@ -4500,18 +4516,19 @@ if FLASK_OK:
                         "count":   len(_TRADE_HISTORY)})
 
     # ── Session endpoints (protected by X-Bot-Secret header) ─────────
+    @app.route("/start-session", methods=["POST"])
+    def start_session():
+        global SESSION_ACTIVE
 
-    @app.route("/session/start", methods=["POST"])
-    def session_start():
-        """
-        Webapp sends user's MT5 credentials here to begin a live session.
+        if flask_request.json.get("api_key") != API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
 
-        Expected JSON body:
-          {
-            "metaapi_token":   "<user's MetaAPI token>",
-            "metaapi_account": "<user's MetaAPI account ID>",
-            "user_id":         "<your webapp user ID — non-sensitive>"
-          }
+        SESSION_ACTIVE = True
+
+        body    = flask_request.get_json(silent=True) or {}
+        token   = body.get("metaapi_token",   "").strip()
+        account = body.get("metaapi_account", "").strip()
+        user_id = body.get("user_id",         "unknown")
 
         Required header:
           X-Bot-Secret: <BOT_SECRET env var value>
@@ -4582,34 +4599,12 @@ if FLASK_OK:
             "balance":    balance,
         }), 200
 
-    @app.route("/session/end", methods=["POST"])
-    def session_end():
-        """
-        Webapp calls this when the user ends their bot session.
-        Immediately wipes credentials from memory and stops live trading.
-
-        Required header:
-          X-Bot-Secret: <BOT_SECRET env var value>
-        """
-        if not _check_secret(flask_request):
-            log_warn("Session end rejected — invalid or missing X-Bot-Secret.")
-            return jsonify({"error": "Unauthorized"}), 401
-
-        with _SESSION_LOCK:
-            was_active = ACTIVE_SESSION["active"]
-            user_id    = ACTIVE_SESSION.get("user_id", "unknown")
-
-        if not was_active:
-            return jsonify({"status": "NO_ACTIVE_SESSION"}), 200
-
+        @app.route("/stop-session", methods=["POST"])
+        def stop_session():
+        global SESSION_ACTIVE
+        SESSION_ACTIVE = False
         _wipe_session()
-        log_info(f"Session ended by webapp — user_id={user_id}")
-
-        return jsonify({
-            "status":  "SESSION_ENDED",
-            "user_id": user_id,
-            "ended_at": datetime.now().isoformat(),
-        }), 200
+        return jsonify({"status": "session stopped"}), 200
 
     @app.route("/session/status", methods=["GET"])
     def session_status():
