@@ -4219,7 +4219,7 @@ import os as _os
 # Your webapp must send this in the X-Bot-Secret header.
 # If not set, session endpoints are disabled (safe default).
 BOT_SECRET: str = _os.environ.get("BOT_SECRET", "")
-API_KEY:    str = _os.environ.get("API_KEY", "your-secret
+API_KEY: str = _os.environ.get("API_KEY", "your-secret-key")
 # Live session state — held in memory only
 SESSION_ACTIVE = False
 ACTIVE_SESSION: Dict = {
