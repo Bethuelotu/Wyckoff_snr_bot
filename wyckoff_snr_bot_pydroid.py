@@ -4293,7 +4293,7 @@ def run_session_bot_loop() -> None:
       - Automatically reverts to idle on session end or broker error
     The Flask thread writes ACTIVE_SESSION; this thread reads it.
     """
-        log_info("Session bot loop started — scanning signals always...")
+    log_info("Session bot loop started — scanning signals always...")
     signal_broker = YFinanceBroker()   # always-on broker for signal scanning
 
     all_signals: List[Dict] = _load_json(CONFIG["signals_file"], [])
