@@ -4245,7 +4245,8 @@ def _check_secret(request) -> bool:
     if not BOT_SECRET:
         log_warn("BOT_SECRET env var not set — session endpoints disabled.")
         return False
-    return request.headers.get("X-Bot-Secret", "") == BOT_SECRET
+    body = request.get_json(silent=True) or {}
+    return body.get("api_key", "") == BOT_SECRET
 
 
 def _get_active_broker() -> Optional[BrokerBase]:
