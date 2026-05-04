@@ -386,6 +386,7 @@ def http_get(url, headers=None, timeout=10):
 def http_post(url, data, headers=None, timeout=10):
     """HTTP POST."""
     headers = headers or {"Content-Type": "application/json"}
+    headers["Content-Type"] = "application/json"
     body = json.dumps(data).encode("utf-8")
     if REQUESTS_OK:
         try:
@@ -3047,7 +3048,10 @@ def _push_trade_event(event_type: str, payload: Dict) -> None:
     if not WEBAPP_API_URL:
         return
     try:
-        http_post(WEBAPP_API_URL, {"type": event_type, **payload}, timeout=3)
+        http_post(WEBAPP_API_URL, {"type": event_type, **payload}, headers={
+            "Content-Type": "application/json",
+            "x-bot-secret": BOT_SECRET,
+        }, timeout=3)
     except Exception as e:
         log_warn(f"Trade event push failed ({event_type}): {e}")
 
@@ -3975,7 +3979,10 @@ def push_all_data(data: Dict) -> None:
         "metrics":   data.get("metrics",  {}),
     }
     try:
-        http_post(WEBAPP_API_URL, payload, timeout=10)
+        http_post(WEBAPP_API_URL, payload, headers={
+            "Content-Type": "application/json",
+            "x-bot-secret": BOT_SECRET,
+        }, timeout=10)
         log_info("Data push: OK")
     except Exception as e:
         log_warn(f"Data push failed: {e}")
