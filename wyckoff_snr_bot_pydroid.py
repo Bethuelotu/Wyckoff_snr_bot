@@ -4329,8 +4329,8 @@ def run_session_bot_loop() -> None:
                            (s.symbol in DERIV_FOREX_MAP or
                             s.symbol in DERIV_SYNTHETIC_MAP)
                     ]
-                    if "run_deriv_scan_v2" in dir():
-                        run_deriv_scan_v2(deriv_signals)
+                    if callable(globals().get("run_deriv_scan_v2")):
+                        run_deriv_scan_v2(cycle_data.get("signals", []))
                     if "deriv_sync_positions" in dir():
                         deriv_sync_positions()
                 except Exception as _de:
