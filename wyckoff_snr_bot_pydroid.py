@@ -4453,7 +4453,7 @@ def run_session_bot_loop() -> None:
             push_all_data(cycle_data)
 
             # ── Deriv Multipliers scan (runs alongside MetaAPI) ──────
-            if _DERIV_TOKEN:
+            if _os.environ.get("DERIV_API_TOKEN", ""):
                 try:
                     deriv_signals = [
                         s for s in all_signals
