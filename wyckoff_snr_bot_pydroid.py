@@ -4318,6 +4318,25 @@ def run_session_bot_loop() -> None:
             require_internet()
             if SESSION_ACTIVE:
                 update_equity(broker)
+                
+            # ── Deriv Multipliers scan (runs alongside MetaAPI) ──────
+            if _os.environ.get("DERIV_API_TOKEN", ""):
+                try:
+                    deriv_signals = [
+                        s for s in all_signals
+                        if isinstance(s, Signal) and
+                           hasattr(s, "direction") and
+                           (s.symbol in DERIV_FOREX_MAP or
+                            s.symbol in DERIV_SYNTHETIC_MAP)
+                    ]
+                    if "run_deriv_scan_v2" in dir():
+                        run_deriv_scan_v2(deriv_signals)
+                    if "deriv_sync_positions" in dir():
+                        deriv_sync_positions()
+                except Exception as _de:
+                    log_error(f"[Deriv] Scan error: {_de}")
+            # ────────────────────────────────────────────────────────
+            
 
             # ── Sync lifecycle state with broker ──────────────────────
             sync_lifecycle_with_broker(broker)
@@ -4454,24 +4473,6 @@ def run_session_bot_loop() -> None:
 
             cycle_data["metrics"] = compute_metrics(cycle_data["trades"])
             push_all_data(cycle_data)
-
-            # ── Deriv Multipliers scan (runs alongside MetaAPI) ──────
-            if _os.environ.get("DERIV_API_TOKEN", ""):
-                try:
-                    deriv_signals = [
-                        s for s in all_signals
-                        if isinstance(s, Signal) and
-                           hasattr(s, "direction") and
-                           (s.symbol in DERIV_FOREX_MAP or
-                            s.symbol in DERIV_SYNTHETIC_MAP)
-                    ]
-                    if "run_deriv_scan_v2" in dir():
-                        run_deriv_scan_v2(deriv_signals)
-                    if "deriv_sync_positions" in dir():
-                        deriv_sync_positions()
-                except Exception as _de:
-                    log_error(f"[Deriv] Scan error: {_de}")
-            # ────────────────────────────────────────────────────────
 
             scan_count += 1
             log_info(f"[SESSION] Scan #{scan_count} done. "
