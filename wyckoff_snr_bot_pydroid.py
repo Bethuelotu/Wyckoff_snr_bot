@@ -4359,9 +4359,9 @@ def run_session_bot_loop() -> None:
 
             for symbol in CONFIG["symbols"]:
                 # Re-check session on every symbol - end can happen mid-scan
-                if _get_active_broker() is None:
-                    log_info("[SESSION] Session ended mid-scan - stopping cycle.")
-                    break
+            if _get_active_broker() is None and not _os.environ.get("DERIV_API_TOKEN", ""):
+                log_info("[SESSION] Session ended mid-scan - stopping cycle.")
+                break
 
                 log_info(f"[SESSION] Scanning {symbol}...")
                 try:
