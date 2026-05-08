@@ -72,6 +72,8 @@ import time
 import logging
 import threading
 import traceback
+import threading as _dthread
+import queue     as _dqueue
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple, Any
 from enum import Enum
@@ -4462,8 +4464,10 @@ def run_session_bot_loop() -> None:
                            (s.symbol in DERIV_FOREX_MAP or
                             s.symbol in DERIV_SYNTHETIC_MAP)
                     ]
-                    run_deriv_scan_v2(deriv_signals)
-                    deriv_sync_positions()
+                    if "run_deriv_scan_v2" in dir():
+                        run_deriv_scan_v2(deriv_signals)
+                    if "deriv_sync_positions" in dir():
+                        deriv_sync_positions()
                 except Exception as _de:
                     log_error(f"[Deriv] Scan error: {_de}")
             # ────────────────────────────────────────────────────────
@@ -4693,9 +4697,6 @@ if __name__ == "__main__":
 #    DERIV_API_TOKEN  - your Deriv API token (Read + Trade scope)
 #    DERIV_DEMO       - set to "1" for demo account, "0" for real
 # ════════════════════════════════════════════════════════════════════
-
-import threading as _dthread
-import queue     as _dqueue
 
 # ── Deriv env vars (read at startup, never hard-coded) ───────────────
 _DERIV_TOKEN: str  = _os.environ.get("DERIV_API_TOKEN", "")
