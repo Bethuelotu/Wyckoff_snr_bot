@@ -247,7 +247,9 @@ CONFIG = {
     # MT5 symbols use standard broker names (set in EA below).
     "symbols": [
         "EUR_USD", "GBP_USD", "XAU_USD",
-        "USD_JPY", "GBP_JPY", "BTC_USD"
+        "USD_JPY", "GBP_JPY", "VOLATILITY_10",
+        "VOLATILITY_25", "AUD_USD", "NZD_USD", 
+        "USD_CAD", "EUR_GBP", "USD_CHF"
     ],
 
     # ── Risk ──────────────────────────────────────────────────────
@@ -4536,18 +4538,11 @@ def run_session_bot_loop() -> None:
                 update_equity(broker)
                 
             # ── Deriv Multipliers scan (runs alongside MetaAPI) ──────
-            if _os.environ.get("DERIV_API_TOKEN", ""):
+            if os.environ.get("DERIV_API_TOKEN", ""):
                 try:
-                    deriv_signals = [
-                        s for s in all_signals
-                        if isinstance(s, Signal) and
-                           hasattr(s, "direction") and
-                           (s.symbol in DERIV_FOREX_MAP or
-                            s.symbol in DERIV_SYNTHETIC_MAP)
-                    ]
                     if callable(globals().get("run_deriv_scan_v2")):
                         run_deriv_scan_v2(cycle_data.get("signals", []))
-                    if "deriv_sync_positions" in dir():
+                    if callable(globals().get("deriv_sync_positions")):
                         deriv_sync_positions()
                 except Exception as _de:
                     log_error(f"[Deriv] Scan error: {_de}")
