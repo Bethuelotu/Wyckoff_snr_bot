@@ -280,8 +280,8 @@ CONFIG = {
     "scan_secs":  300,
 
     # ── Telegram alerts (optional) ────────────────────────────────
-    "tg_token":  "",
-    "tg_chat":   "",
+    "tg_token": _os.environ.get("TELEGRAM_TOKEN", ""),
+    "tg_chat":  _os.environ.get("TELEGRAM_CHAT_ID", ""),
 
     # ── File paths ────────────────────────────────────────────────
     "log_file":      "bot_log.txt",
@@ -2585,14 +2585,22 @@ def score_signal(symbol: str,
 # ════════════════════════════════════════════════════════════════════
 #  NOTIFICATIONS
 # ════════════════════════════════════════════════════════════════════
-def send_telegram(msg: str):
-    """Send Telegram message if token is configured."""
-    token = CONFIG.get("tg_token", "")
-    chat  = CONFIG.get("tg_chat", "")
-    if not token or not chat:
-        return
+# ── Telegram configuration ────────────────────────────────────────────
+_TELEGRAM_TOKEN:    str  = CONFIG.get("tg_token", "")
+_TELEGRAM_CHAT_ID:  str  = CONFIG.get("tg_chat",  "")
+_TELEGRAM_PAUSED:   bool = False
+_TG_SIGNALS_ONLY:   bool = False
+_TG_LAST_UPDATE_ID: int  = 0
+
+
+def tg_send(text: str, chat_id: str = "") -> bool:
+    """Send message to Telegram."""
+    token = _TELEGRAM_TOKEN
+    cid   = chat_id or _TELEGRAM_CHAT_ID
+    if not token or not cid:
+        return False
     url  = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {"chat_id": chat, "text": msg, "parse_mode": "HTML"}
+    data = {"chat_id": cid, "text": text, "parse_mode": "HTML"}
     try:
         if REQUESTS_OK:
             req_lib.post(url, json=data, timeout=5)
@@ -2602,8 +2610,216 @@ def send_telegram(msg: str):
                            headers={"Content-Type": "application/json"},
                            method="POST")
             urlopen(req, timeout=5)
+        return True
     except Exception as e:
-        log_error(f"Telegram error: {e}")
+        log_error(f"[Telegram] Send error: {e}")
+        return False
+
+
+# Keep old name working
+def send_telegram(msg: str) -> None:
+    tg_send(msg)
+
+
+def tg_notify_trade_opened(symbol, direction, entry, stake, multiplier, sl, tp):
+    emoji = "📈" if direction == "BUY" else "📉"
+    tg_send(
+        f"{emoji} <b>TRADE OPENED</b>\n"
+        f"Symbol : <b>{symbol}</b>\n"
+        f"Dir    : <b>{direction}</b>\n"
+        f"Entry  : {entry:.5f}\n"
+        f"Stake  : ${stake} x{multiplier}\n"
+        f"TP     : +${tp} | SL: -${sl}"
+    )
+
+
+def tg_notify_trade_closed(symbol, direction, pnl, reason=""):
+    emoji = "✅" if pnl >= 0 else "🔴"
+    tg_send(
+        f"{emoji} <b>TRADE CLOSED</b>\n"
+        f"Symbol : {symbol}\n"
+        f"Dir    : {direction}\n"
+        f"PnL    : {'+'if pnl>=0 else ''}{pnl:.2f}\n"
+        f"Reason : {reason}"
+    )
+
+
+def tg_notify_signal(symbol, direction, score, pattern):
+    emoji = "📈" if direction == "BUY" else "📉"
+    tg_send(
+        f"{emoji} <b>SIGNAL</b>\n"
+        f"Symbol : <b>{symbol}</b>\n"
+        f"Dir    : <b>{direction}</b>\n"
+        f"Score  : {score:.1f}/100\n"
+        f"Pattern: {pattern}"
+    )
+
+
+def tg_notify_signal_detail(signal) -> None:
+    direction = signal.direction.value if hasattr(signal.direction, "value") else str(signal.direction)
+    emoji     = "📈" if direction == "BUY" else "📉"
+    tg_send(
+        f"{emoji} <b>SIGNAL DETECTED</b>\n"
+        f"Symbol    : <b>{getattr(signal,'symbol','?')}</b>\n"
+        f"Direction : <b>{direction}</b>\n"
+        f"Timeframe : {getattr(signal,'timeframe','H1')}\n"
+        f"Entry     : {getattr(signal,'entry',0.0):.5f}\n"
+        f"Stop Loss : {getattr(signal,'stop_loss',0.0):.5f}\n"
+        f"Take Profit: {getattr(signal,'take_profit',0.0):.5f}\n"
+        f"Score     : {getattr(signal,'score',0.0):.1f}/100\n"
+        f"Session   : {'LIVE' if SESSION_ACTIVE else 'SIGNAL ONLY'}"
+    )
+
+
+def tg_notify_reversal_close(symbol, reason, pnl):
+    tg_send(
+        f"⚠️ <b>REVERSAL CLOSE</b>\n"
+        f"Symbol : {symbol}\n"
+        f"Reason : {reason}\n"
+        f"PnL est: {pnl:.2f}"
+    )
+
+
+def tg_notify_emergency_stop(balance):
+    tg_send(
+        f"🚨 <b>EMERGENCY STOP</b>\n"
+        f"Balance ${balance:.2f} too low.\n"
+        f"All trading halted."
+    )
+
+
+def tg_notify_daily_limit(balance, loss):
+    tg_send(
+        f"⚠️ <b>DAILY LIMIT HIT</b>\n"
+        f"Lost ${loss:.2f} today.\n"
+        f"Balance: ${balance:.2f}\n"
+        f"Trading paused until tomorrow."
+    )
+
+
+# ── Command handlers ──────────────────────────────────────────────────
+
+def _tg_cmd_status(chat_id: str) -> None:
+    try:
+        deriv_state = "🟢 CONNECTED" if CONFIG.get("deriv_token") or \
+                      _os.environ.get("DERIV_API_TOKEN") else "⚫ NO TOKEN"
+        paused      = "⏸ PAUSED" if _TELEGRAM_PAUSED else "▶ RUNNING"
+        tg_send(
+            f"📊 <b>BOT STATUS</b>\n"
+            f"Session  : {'🟢 ACTIVE' if SESSION_ACTIVE else '⚫ IDLE'}\n"
+            f"Scanner  : {paused}\n"
+            f"Deriv    : {deriv_state}\n"
+            f"Signals  : {'📡 AUTO' if _TG_SIGNALS_ONLY else '🔕 MANUAL'}",
+            chat_id
+        )
+    except Exception as e:
+        tg_send(f"❌ Error: {e}", chat_id)
+
+
+def _tg_cmd_signals_only_on(chat_id: str) -> None:
+    global _TG_SIGNALS_ONLY
+    _TG_SIGNALS_ONLY = True
+    tg_send(
+        "📡 <b>Signals-Only Mode ON</b>\n"
+        "Every signal will be pushed to Telegram.\n"
+        "Use /signals_only_off to disable.",
+        chat_id,
+    )
+
+
+def _tg_cmd_signals_only_off(chat_id: str) -> None:
+    global _TG_SIGNALS_ONLY
+    _TG_SIGNALS_ONLY = False
+    tg_send(
+        "🔕 <b>Signals-Only Mode OFF</b>\n"
+        "Auto signal push disabled.",
+        chat_id,
+    )
+
+
+def _tg_cmd_pause(chat_id: str) -> None:
+    global _TELEGRAM_PAUSED
+    _TELEGRAM_PAUSED = True
+    tg_send("⏸ <b>Scanning paused.</b>\nUse /resume to continue.", chat_id)
+
+
+def _tg_cmd_resume(chat_id: str) -> None:
+    global _TELEGRAM_PAUSED
+    _TELEGRAM_PAUSED = False
+    tg_send("▶ <b>Scanning resumed.</b>", chat_id)
+
+
+def _tg_cmd_help(chat_id: str) -> None:
+    tg_send(
+        "🤖 <b>BOT COMMANDS</b>\n\n"
+        "/status          - Bot status\n"
+        "/signals         - Last signals\n"
+        "/signals_only    - Auto-push signals ON\n"
+        "/signals_only_off - Auto-push signals OFF\n"
+        "/pause           - Pause scanning\n"
+        "/resume          - Resume scanning\n"
+        "/help            - This message",
+        chat_id,
+    )
+
+
+def _tg_process_update(update: Dict) -> None:
+    msg     = update.get("message", {})
+    chat_id = str(msg.get("chat", {}).get("id", ""))
+    text    = msg.get("text", "").strip().lower()
+    if not text or not chat_id:
+        return
+    cmd = text.split()[0].lstrip("/")
+    if cmd == "status":
+        _tg_cmd_status(chat_id)
+    elif cmd == "signals_only_off":
+        _tg_cmd_signals_only_off(chat_id)
+    elif cmd in ("signals_only", "signals_only_on"):
+        _tg_cmd_signals_only_on(chat_id)
+    elif cmd == "pause":
+        _tg_cmd_pause(chat_id)
+    elif cmd == "resume":
+        _tg_cmd_resume(chat_id)
+    elif cmd in ("help", "start"):
+        _tg_cmd_help(chat_id)
+    else:
+        tg_send(f"❓ Unknown: {text}\nUse /help", chat_id)
+
+
+def is_telegram_paused() -> bool:
+    return _TELEGRAM_PAUSED
+
+
+def run_telegram_polling() -> None:
+    global _TG_LAST_UPDATE_ID
+    if not _TELEGRAM_TOKEN:
+        log_info("[Telegram] No token - disabled")
+        return
+    log_info("[Telegram] Polling started")
+    tg_send("🤖 <b>Bot started</b>\nWyckoff SNR Bot is online.\nUse /help for commands.")
+    while True:
+        try:
+            url  = f"https://api.telegram.org/bot{_TELEGRAM_TOKEN}/getUpdates"
+            if REQUESTS_OK:
+                resp = req_lib.get(url, params={
+                    "offset": _TG_LAST_UPDATE_ID + 1,
+                    "timeout": 30, "limit": 10
+                }, timeout=35)
+                data = resp.json()
+            else:
+                from urllib.request import urlopen as _uo
+                from urllib.parse import urlencode as _ue
+                params = _ue({"offset": _TG_LAST_UPDATE_ID+1, "timeout": 30, "limit": 10})
+                data   = json.loads(_uo(f"{url}?{params}", timeout=35).read())
+            for update in data.get("result", []):
+                try:
+                    _tg_process_update(update)
+                    _TG_LAST_UPDATE_ID = update.get("update_id", _TG_LAST_UPDATE_ID)
+                except Exception as e:
+                    log_error(f"[Telegram] Update error: {e}")
+        except Exception as e:
+            log_error(f"[Telegram] Poll error: {e}")
+            time.sleep(10)
 
 # ════════════════════════════════════════════════════════════════════
 #  MAIN BOT LOOP
@@ -4442,7 +4658,17 @@ def run_session_bot_loop() -> None:
                             "metrics":  {},
                             "event":    {"type": "NEW_SIGNAL", "signal": sig_dict},
                         })
-
+                        
+                        # Always push signal to Telegram
+                        tg_notify_signal(
+                            symbol,
+                            signal.direction.value,
+                            float(signal.score),
+                            entry_analysis.get("pattern", "N/A"),
+                        )
+                        if globals().get("_TG_SIGNALS_ONLY"):
+                            tg_notify_signal_detail(signal)
+                            
                         if not SESSION_ACTIVE:
                             # Signal-only mode - no trade execution
                             log_info(f"  [{symbol}] SIGNAL_ONLY - pushed to webapp, no trade placed.")
@@ -4666,7 +4892,14 @@ if __name__ == "__main__":
             log_warn("  are DISABLED until BOT_SECRET is configured.")
             log_warn("  Set it in Render dashboard → Environment → Add var.")
             log_warn("=" * 60)
-
+            
+        if _TELEGRAM_TOKEN:
+            _tg_thread = threading.Thread(
+                target=run_telegram_polling, name="TelegramPoller", daemon=True
+            )
+            _tg_thread.start()
+            log_info("[Telegram] Polling thread started")
+        
         bot_thread = threading.Thread(
             target=run_session_bot_loop, name="BotLoop"
         )
