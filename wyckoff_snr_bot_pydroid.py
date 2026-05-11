@@ -280,8 +280,8 @@ CONFIG = {
     "scan_secs":  300,
 
     # ── Telegram alerts (optional) ────────────────────────────────
-    "tg_token": _os.environ.get("TELEGRAM_TOKEN", ""),
-    "tg_chat":  _os.environ.get("TELEGRAM_CHAT_ID", ""),
+    "tg_token": os.environ.get("TELEGRAM_TOKEN", ""),
+    "tg_chat":  os.environ.get("TELEGRAM_CHAT_ID", ""),
 
     # ── File paths ────────────────────────────────────────────────
     "log_file":      "bot_log.txt",
