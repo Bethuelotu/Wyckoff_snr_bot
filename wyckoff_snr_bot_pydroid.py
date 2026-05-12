@@ -2770,6 +2770,8 @@ def _tg_cmd_help(chat_id: str) -> None:
         "/pause           - Pause scanning\n"
         "/resume          - Resume scanning\n"
         "/help            - This message",
+        "/trades          - open deriv positions\n",
+        "/balance         - deriv account balance\n",
         chat_id,
     )
 
