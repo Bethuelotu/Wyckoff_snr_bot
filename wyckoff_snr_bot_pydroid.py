@@ -2646,14 +2646,18 @@ def tg_notify_trade_closed(symbol, direction, pnl, reason=""):
     )
 
 
-def tg_notify_signal(symbol, direction, score, pattern):
+def tg_notify_signal(symbol, direction, score, pattern,
+                     entry=0.0, sl=0.0, tp=0.0):
     emoji = "📈" if direction == "BUY" else "📉"
     tg_send(
         f"{emoji} <b>SIGNAL</b>\n"
-        f"Symbol : <b>{symbol}</b>\n"
-        f"Dir    : <b>{direction}</b>\n"
-        f"Score  : {score:.1f}/100\n"
-        f"Pattern: {pattern}"
+        f"Symbol  : <b>{symbol}</b>\n"
+        f"Dir     : <b>{direction}</b>\n"
+        f"Score   : {min(score, 100):.1f}/100\n"
+        f"Pattern : {pattern}\n"
+        f"Entry   : {entry:.5f}\n"
+        f"SL      : {sl:.5f}\n"
+        f"TP      : {tp:.5f}"
     )
 
 
@@ -4519,9 +4523,15 @@ def run_session_bot_loop() -> None:
 
     all_signals: List[Dict] = _load_json(CONFIG["signals_file"], [])
     scan_count = 0
-
+    
+                
     while True:
         try:
+            # Keep-alive ping to prevent Render sleep
+            scan_count += 1
+            if scan_count % 10 == 0:
+                log_info("[KeepAlive] Bot active")
+                
             # ── Determine mode for this cycle ─────────────────────────
             live_broker = _get_active_broker()
 
@@ -4542,6 +4552,8 @@ def run_session_bot_loop() -> None:
                 try:
                     if callable(globals().get("run_deriv_scan_v2")):
                         run_deriv_scan_v2(cycle_data.get("signals", []))
+                    elif callable(globals().get("run_deriv_scan")):
+                        run_deriv_scan(cycle_data.get("signals", []))
                     if callable(globals().get("deriv_sync_positions")):
                         deriv_sync_positions()
                 except Exception as _de:
@@ -4570,9 +4582,12 @@ def run_session_bot_loop() -> None:
 
             for symbol in CONFIG["symbols"]:
                 # Re-check session on every symbol - end can happen mid-scan
-                if _get_active_broker() is None and not _os.environ.get("DERIV_API_TOKEN", ""):
-                    log_info("[SESSION] Session ended mid-scan - stopping cycle.")
-                    break
+                if _get_active_broker() is None:
+                    if os.environ.get("DERIV_API_TOKEN", ""):
+                        log_info("[Deriv] No MT5 session - continuing for Deriv only")
+                    else:
+                        log_info("[SESSION] Session ended mid-scan - stopping cycle.")
+                        break
 
                 log_info(f"[SESSION] Scanning {symbol}...")
                 try:
