@@ -684,6 +684,9 @@ class YFinanceBroker(BrokerBase):
         "USD_JPY": "USDJPY=X",  "GBP_JPY": "GBPJPY=X",
         "XAU_USD": "GC=F",      "BTC_USD": "BTC-USD",
         "NAS_USD": "NQ=F",      "SPX_USD": "ES=F",
+        "USD_CAD": "CAD=X, "USD_CHF": "CHF=X", "AUD_USD": "AUDUSD=X",
+        "NZD_USD": "NZDUSD=X", "XAU_USD": "GC=F", "USD_JPY": "JPY=X",
+        "GBP_JPY": "GBPJPY=X", "EUR_JPY": "EURJPY=X", "EUR_GBP": "EURGBP=X",
     }
     # Yahoo intervals and the range needed to get enough bars
     TF_MAP = {
@@ -2788,6 +2791,28 @@ def _tg_process_update(update: Dict) -> None:
         _tg_cmd_resume(chat_id)
     elif cmd in ("help", "start"):
         _tg_cmd_help(chat_id)
+    elif cmd == "balance":
+        try:
+            from_broker = globals().get("_get_deriv_broker") and globals()["_get_deriv_broker"]()
+            bal = from_broker.get_balance() if from_broker else 0.0
+            tg_send(f"💰 <b>Balance</b>\n${bal:.2f}", chat_id)
+        except Exception as e:
+            tg_send(f"❌ Balance error: {e}", chat_id)
+    elif cmd == "trades":
+        try:
+            from_broker = globals().get("_get_deriv_broker") and globals()["_get_deriv_broker"]()
+            positions = from_broker.get_open_positions() if from_broker else []
+            if not positions:
+                tg_send("📭 No open trades.", chat_id)
+            else:
+                msg = "📊 <b>Open Trades</b>\n"
+                for p in positions:
+                    msg += (f"\n{p.get('symbol')} {p.get('direction')}\n"
+                            f"Entry: {p.get('buy_price', 0):.5f}\n"
+                            f"Stake: ${p.get('stake', 0)}\n")
+                tg_send(msg, chat_id)
+        except Exception as e:
+            tg_send(f"❌ Trades error: {e}", chat_id)    
     else:
         tg_send(f"❓ Unknown: {text}\nUse /help", chat_id)
 
