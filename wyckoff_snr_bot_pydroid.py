@@ -684,9 +684,11 @@ class YFinanceBroker(BrokerBase):
         "USD_JPY": "USDJPY=X",  "GBP_JPY": "GBPJPY=X",
         "XAU_USD": "GC=F",      "BTC_USD": "BTC-USD",
         "NAS_USD": "NQ=F",      "SPX_USD": "ES=F",
-        "USD_CAD": "CAD=X, "USD_CHF": "CHF=X", "AUD_USD": "AUDUSD=X",
-        "NZD_USD": "NZDUSD=X", "XAU_USD": "GC=F", "USD_JPY": "JPY=X",
-        "GBP_JPY": "GBPJPY=X", "EUR_JPY": "EURJPY=X", "EUR_GBP": "EURGBP=X",
+        "USD_CAD": "CAD=X",      "USD_CHF": "CHF=X", 
+        "AUD_USD": "AUDUSD=X",  "NZD_USD": "NZDUSD=X",  
+        "XAU_USD": "GC=F",      "USD_JPY": "JPY=X",
+        "GBP_JPY": "GBPJPY=X",  "EUR_JPY": "EURJPY=X", 
+        "EUR_GBP": "EURGBP=X",
     }
     # Yahoo intervals and the range needed to get enough bars
     TF_MAP = {
