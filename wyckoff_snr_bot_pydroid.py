@@ -4670,14 +4670,18 @@ def run_session_bot_loop() -> None:
                         })
                         
                         # Always push signal to Telegram
-                        tg_notify_signal(
-                            symbol,
-                            signal.direction.value,
-                            float(signal.score),
-                            entry_analysis.get("pattern", "N/A"),
-                        )
-                        if globals().get("_TG_SIGNALS_ONLY"):
-                            tg_notify_signal_detail(signal)
+                        if signal and float(signal.score) >= 50:
+                            tg_notify_signal(
+                                symbol,
+                                signal.direction.value,
+                                float(signal.score),
+                                entry_analysis.get("trigger", "N/A"),
+                                entry=getattr(signal, "entry", 0.0),
+                                sl=getattr(signal, "sl", 0.0),
+                                tp=getattr(signal, "tp", 0.0),
+                            )
+                            if globals().get("_TG_SIGNALS_ONLY"):
+                                tg_notify_signal_detail(signal)
                             
                         if not SESSION_ACTIVE:
                             # Signal-only mode - no trade execution
