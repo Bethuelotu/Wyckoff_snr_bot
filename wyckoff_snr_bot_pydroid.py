@@ -4432,6 +4432,7 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
             cycle_data["metrics"] = compute_metrics(cycle_data["trades"])
             push_all_data(cycle_data)
             # ── Deriv trade execution ─────────────────────────────────
+            log_info(f"[Deriv] Reached execution block. Token set: {bool(os.environ.get('DERIV_API_TOKEN'))}")
             if os.environ.get("DERIV_API_TOKEN", ""):
                 try:
                     _deriv_b = _get_deriv_broker()
