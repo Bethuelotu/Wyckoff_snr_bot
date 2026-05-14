@@ -4395,7 +4395,7 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
 
                         sig_dict = signal.to_dict()
                         all_signals.append(sig_dict)
-                        cycle_data["signals"].append(sig_dict)
+                        cycle_data["signals"].append(signal)
                         _save_json(CONFIG["signals_file"], all_signals[-100:])
 
                         if not can_trade:
