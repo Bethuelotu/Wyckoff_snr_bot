@@ -2658,7 +2658,7 @@ def tg_notify_signal(symbol, direction, score, pattern,
         f"{emoji} <b>SIGNAL</b>\n"
         f"Symbol  : <b>{symbol}</b>\n"
         f"Dir     : <b>{direction}</b>\n"
-        f"Score   : {min(score, 100):.1f}/100\n"
+        f"Score   : {score:.1f} (min:{CONFIG.get('combined_min', 9)})\n"
         f"Pattern : {pattern}\n"
         f"Entry   : {entry:.5f}\n"
         f"SL      : {sl:.5f}\n"
@@ -4431,6 +4431,53 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
             # ── End of cycle: compute metrics + push data ─────────────
             cycle_data["metrics"] = compute_metrics(cycle_data["trades"])
             push_all_data(cycle_data)
+            # ── Deriv trade execution ─────────────────────────────────
+            if os.environ.get("DERIV_API_TOKEN", ""):
+                    for sig in cycle_data.get("signals", []):
+                        try:
+                            sym    = getattr(sig, "symbol", None) or sig.get("symbol", "")
+                            dirn   = getattr(sig, "direction", None)
+                            dirn   = dirn.value if hasattr(dirn, "value") else str(dirn)
+                            score  = float(getattr(sig, "score", 0) or sig.get("score", 0))
+                            if score < CONFIG.get("combined_min", 9):
+                                log_info(f"[Deriv] {sym} score {score:.0f} too low - skip")
+                                continue
+                            deriv_sym = DERIV_FOREX_MAP.get(sym) or DERIV_SYNTHETIC_MAP.get(sym)
+                            if not deriv_sym:
+                                log_info(f"[Deriv] {sym} not in Deriv map - skip")
+                                continue
+                            broker = _get_deriv_broker()
+                            if not broker:
+                                log_warn("[Deriv] No broker - skip")
+                                break
+                            balance = broker.get_balance()
+                            stage   = DerivRiskManager(balance).current_stage(balance)
+                            stake   = stage["stake"]
+                            mult    = stage["multiplier"]
+                            sl_usd  = DERIV_CONFIG.get("stop_loss_usd", 0.50)
+                            tp_usd  = DERIV_CONFIG.get("take_profit_usd", 1.00)
+                            log_info(f"[Deriv] Placing {dirn} on {deriv_sym} "
+                                     f"stake={stake} x{mult} score={score:.0f}")
+                            result = broker.place_order(
+                                symbol=deriv_sym,
+                                direction=dirn,
+                                stake=stake,
+                                multiplier=mult,
+                                sl_usd=sl_usd,
+                                tp_usd=tp_usd,
+                            )
+                            if result:
+                                log_trade(f"[Deriv] Trade placed: {result}")
+                                tg_notify_trade_opened(
+                                    deriv_sym, dirn,
+                                    float(result.get("buy_price", 0)),
+                                    stake, mult, sl_usd, tp_usd,
+                                )
+                            else:
+                                log_warn(f"[Deriv] Order failed for {deriv_sym}")
+                        except Exception as _de:
+                            log_error(f"[Deriv] Trade error: {_de}")
+            # ─────────────────────────────────────────────────────────
 
             scan_count += 1
             log_info(f"Scan #{scan_count} complete. Next scan in "
@@ -4699,7 +4746,7 @@ def run_session_bot_loop() -> None:
                         })
                         
                         # Always push signal to Telegram
-                        if signal and float(signal.score) >= 50:
+                        if signal and float(signal.score) >= CONFIG.get("combined_min", 9):
                             tg_notify_signal(
                                 symbol,
                                 signal.direction.value,
