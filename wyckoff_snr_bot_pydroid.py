@@ -4812,6 +4812,59 @@ def run_session_bot_loop() -> None:
 
             cycle_data["metrics"] = compute_metrics(cycle_data["trades"])
             push_all_data(cycle_data)
+            # ── Deriv trade execution ─────────────────────────────────
+            log_info(f"[Deriv] Reached execution block. Token={bool(os.environ.get('DERIV_API_TOKEN'))}")
+            if os.environ.get("DERIV_API_TOKEN", ""):
+                try:
+                    _deriv_b = _get_deriv_broker()
+                except Exception:
+                    _deriv_b = None
+                if not _deriv_b:
+                    log_warn("[Deriv] Broker not ready - skip")
+                else:
+                    _d_balance = _deriv_b.get_balance()
+                    _d_maps = (DERIV_FOREX_MAP, DERIV_SYNTHETIC_MAP)
+                    _d_cfg = DERIV_CONFIG
+                    for sig in cycle_data.get("signals", []):
+                        try:
+                            sym = getattr(sig, "symbol", None) or (sig.get("symbol", "") if isinstance(sig, dict) else "")
+                            dirn = getattr(sig, "direction", None)
+                            if dirn is None and isinstance(sig, dict):
+                                dirn = sig.get("direction", "BUY")
+                            dirn = dirn.value if hasattr(dirn, "value") else str(dirn)
+                            score = float(getattr(sig, "score", 0) or (sig.get("score", 0) if isinstance(sig, dict) else 0))
+                            if score < CONFIG.get("combined_min", 7):
+                                log_info(f"[Deriv] {sym} score={score:.0f} too low - skip")
+                                continue
+                            deriv_sym = _d_maps[0].get(sym) or _d_maps[1].get(sym)
+                            if not deriv_sym:
+                                log_info(f"[Deriv] {sym} not in Deriv maps - skip")
+                                continue
+                            if _d_rsk_cls := globals().get("DerivRiskManager"):
+                                stage = _d_rsk_cls(_d_balance).current_stage(_d_balance)
+                                stake = stage.get("stake", 1.00)
+                                mult = stage.get("multiplier", 10)
+                            else:
+                                stake, mult = 1.00, 10
+                            sl_usd = _d_cfg.get("stop_loss_usd", 0.50)
+                            tp_usd = _d_cfg.get("take_profit_usd", 1.00)
+                            log_info(f"[Deriv] >>> Placing {dirn} on {deriv_sym} stake=${stake} x{mult} score={score:.0f}")
+                            result = _deriv_b.place_multiplier(
+                                symbol=deriv_sym,
+                                direction=dirn,
+                                stake=stake,
+                                multiplier=mult,
+                                sl_usd=sl_usd,
+                                tp_usd=tp_usd,
+                            )
+                            if result:
+                                log_trade(f"[Deriv] Trade placed: {result}")
+                                tg_notify_trade_opened(deriv_sym, dirn, float(result.get("buy_price", 0)), stake, mult, sl_usd, tp_usd)
+                            else:
+                                log_warn(f"[Deriv] Order failed for {deriv_sym}")
+                        except Exception as _de:
+                            log_error(f"[Deriv] Trade error {sym}: {_de}")
+            # ─────────────────────────────────────────────────────────
 
             scan_count += 1
             log_info(f"[SESSION] Scan #{scan_count} done. "
