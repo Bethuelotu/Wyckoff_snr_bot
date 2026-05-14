@@ -4433,7 +4433,10 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
             push_all_data(cycle_data)
             # ── Deriv trade execution ─────────────────────────────────
             if os.environ.get("DERIV_API_TOKEN", ""):
-                _deriv_b = globals().get("_get_deriv_broker") and                            callable(globals()["_get_deriv_broker"]) and                            globals()["_get_deriv_broker"]()
+                try:
+                    _deriv_b = _get_deriv_broker()
+                except Exception:
+                    _deriv_b = None                            callable(globals()["_get_deriv_broker"]) and                            globals()["_get_deriv_broker"]()
                 if not _deriv_b:
                     log_warn("[Deriv] Broker not ready yet - skip this cycle")
                 else:
