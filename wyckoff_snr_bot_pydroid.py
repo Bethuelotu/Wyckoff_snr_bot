@@ -4436,7 +4436,7 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
                 try:
                     _deriv_b = _get_deriv_broker()
                 except Exception:
-                    _deriv_b = None                            callable(globals()["_get_deriv_broker"]) and                            globals()["_get_deriv_broker"]()
+                    _deriv_b = None
                 if not _deriv_b:
                     log_warn("[Deriv] Broker not ready yet - skip this cycle")
                 else:
