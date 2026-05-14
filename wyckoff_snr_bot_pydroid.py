@@ -2674,7 +2674,7 @@ def tg_notify_signal_detail(signal) -> None:
         f"Symbol    : <b>{getattr(signal,'symbol','?')}</b>\n"
         f"Direction : <b>{direction}</b>\n"
         f"Timeframe : {getattr(signal,'timeframe','H1')}\n"
-        f"Entry     : {getattr(signal,'entry',0.0):.5f}\n"
+        f"Entry     : {getattr(signal,'snr_price',0.0):.5f}\n"
         f"Stop Loss : {getattr(signal,'stop_loss',0.0):.5f}\n"
         f"Take Profit: {getattr(signal,'take_profit',0.0):.5f}\n"
         f"Score     : {getattr(signal,'score',0.0):.1f} (min:{CONFIG.get('combined_min',9)})\n"
@@ -4771,7 +4771,7 @@ def run_session_bot_loop() -> None:
                                 signal.direction.value,
                                 float(signal.score),
                                 entry_analysis.get("trigger", "N/A"),
-                                entry=getattr(signal, "entry", 0.0),
+                                entry=getattr(signal, "snr_price", 0.0),
                                 sl=getattr(signal, "sl", 0.0),
                                 tp=getattr(signal, "tp", 0.0),
                             )
