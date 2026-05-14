@@ -5046,8 +5046,8 @@ if __name__ == "__main__":
 # ════════════════════════════════════════════════════════════════════
 
 # ── Deriv env vars (read at startup, never hard-coded) ───────────────
-_DERIV_TOKEN: str  = _os.environ.get("DERIV_API_TOKEN", "")
-_DERIV_DEMO:  bool = _os.environ.get("DERIV_DEMO", "1") == "1"
+_DERIV_TOKEN: str  = os.environ.get("DERIV_API_TOKEN", "")
+_DERIV_DEMO:  bool = os.environ.get("DERIV_DEMO", "1") == "1"
 
 # ── Deriv WebSocket endpoints ─────────────────────────────────────────
 _DERIV_WS_DEMO = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
