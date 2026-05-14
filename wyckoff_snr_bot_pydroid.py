@@ -262,7 +262,7 @@ CONFIG = {
     # ── Strategy thresholds ───────────────────────────────────────
     "wyckoff_min":    4,
     "snr_min":        5,
-    "combined_min":   9,
+    "combined_min":   7,
 
     # ── Timeframes ────────────────────────────────────────────────
     "tf_weekly":  "W",
