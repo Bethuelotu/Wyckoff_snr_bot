@@ -6039,18 +6039,20 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
         return None
     if _deriv_broker is None:
         _deriv_broker = DerivBroker(token=_token, demo=os.environ.get("DERIV_DEMO","1")=="1")
+
+    # Retry connection every call if not yet authorized
+    if not _deriv_broker._authed:
         try:
-            log_info(f"[Deriv] Attempting WebSocket connection to: {_deriv_broker._ws_url}")
+            log_info(f"[Deriv] Connecting to {_deriv_broker._ws_url}")
             connected = _deriv_broker._ensure_connected()
-            log_info(f"[Deriv] _ensure_connected returned: {connected}")
+            log_info(f"[Deriv] Connection result: {connected}")
+            if not connected:
+                log_error("[Deriv] Auth failed - check DERIV_API_TOKEN")
+                return None
         except Exception as _ce:
-            log_error(f"[Deriv] Connection exception: {_ce}")
-            connected = False
-        if not connected:
-            log_error("[Deriv] Failed to connect/authorize - check DERIV_API_TOKEN")
-            # Don't reset to None - keep broker object so we can retry
-            # next cycle without recreating the object
+            log_error(f"[Deriv] Connection error: {_ce}")
             return None
+
     return _deriv_broker
 
 
