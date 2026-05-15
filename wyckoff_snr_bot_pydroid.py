@@ -6027,6 +6027,10 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
         return None
     if _deriv_broker is None:
         _deriv_broker = DerivBroker(token=_token, demo=os.environ.get("DERIV_DEMO","1")=="1")
+        if not _deriv_broker._ensure_connected():
+            log_error("[Deriv] Failed to connect/authorize - check your DERIV_API_TOKEN")
+            _deriv_broker = None
+            return None
     return _deriv_broker
 
 
