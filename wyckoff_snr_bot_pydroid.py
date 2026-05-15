@@ -6022,10 +6022,11 @@ _deriv_entries: Optional[MultiEntryManager] = None
 def _get_deriv_broker() -> Optional[DerivBroker]:
     """Return singleton DerivBroker, creating if needed."""
     global _deriv_broker
-    if not _DERIV_TOKEN:
+    _token = os.environ.get("DERIV_API_TOKEN", "")
+    if not _token:
         return None
     if _deriv_broker is None:
-        _deriv_broker = DerivBroker(token=_DERIV_TOKEN, demo=_DERIV_DEMO)
+        _deriv_broker = DerivBroker(token=_token, demo=os.environ.get("DERIV_DEMO","1")=="1")
     return _deriv_broker
 
 
