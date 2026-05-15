@@ -6040,7 +6040,9 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
     if _deriv_broker is None:
         _deriv_broker = DerivBroker(token=_token, demo=os.environ.get("DERIV_DEMO","1")=="1")
         try:
+            log_info(f"[Deriv] Attempting WebSocket connection to: {_deriv_broker._ws_url}")
             connected = _deriv_broker._ensure_connected()
+            log_info(f"[Deriv] _ensure_connected returned: {connected}")
         except Exception as _ce:
             log_error(f"[Deriv] Connection exception: {_ce}")
             connected = False
