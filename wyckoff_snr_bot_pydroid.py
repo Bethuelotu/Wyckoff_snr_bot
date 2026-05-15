@@ -5465,7 +5465,7 @@ class DerivBroker(BrokerBase):
                      f"balance={self._balance} {self._currency}")
             return True
 
-    err = resp.get("error", {}).get("message", "unknown") if resp else "no response"
+        err = resp.get("error", {}).get("message", "unknown") if resp else "no response"
         err_code = resp.get("error", {}).get("code", "") if resp else ""
         log_error(f"[Deriv] Auth failed: {err} (code={err_code}) token_len={len(self._token)}")
         self._authed = False
