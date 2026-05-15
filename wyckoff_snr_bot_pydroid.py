@@ -5219,7 +5219,7 @@ class DerivWSClient:
             self._sock = ctx.wrap_socket(raw, server_hostname=host.split("?")[0])
 
             # WebSocket handshake
-            key = _base64.b64encode(_os.urandom(16)).decode()
+            key = _base64.b64encode(os.urandom(16)).decode()
             handshake = (
                 f"GET {path} HTTP/1.1\r\n"
                 f"Host: {host}\r\n"
@@ -5266,7 +5266,7 @@ class DerivWSClient:
         """Encode a text frame with masking (client must mask)."""
         data   = payload.encode("utf-8")
         length = len(data)
-        mask   = _os.urandom(4)
+        mask   = os.urandom(4)
 
         # Build header
         if length < 126:
@@ -6027,8 +6027,13 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
         return None
     if _deriv_broker is None:
         _deriv_broker = DerivBroker(token=_token, demo=os.environ.get("DERIV_DEMO","1")=="1")
-        if not _deriv_broker._ensure_connected():
-            log_error("[Deriv] Failed to connect/authorize - check your DERIV_API_TOKEN")
+        try:
+            connected = _deriv_broker._ensure_connected()
+        except Exception as _ce:
+            log_error(f"[Deriv] Connection exception: {_ce}")
+            connected = False
+        if not connected:
+            log_error("[Deriv] Failed to connect - resetting broker")
             _deriv_broker = None
             return None
     return _deriv_broker
