@@ -4755,7 +4755,9 @@ def run_session_bot_loop() -> None:
                         )
                         sig_dict = signal.to_dict()
                         all_signals.append(sig_dict)
-                        cycle_data["signals"].append(signal)   # append Signal object for Deriv
+                        cycle_data["signals"].append(signal)   # Signal object for Deriv
+                        cycle_data["_signals_raw"] = cycle_data.get("_signals_raw", [])
+                        cycle_data["_signals_raw"].append(signal)
                         _save_json(CONFIG["signals_file"], all_signals[-100:])
 
                         # Always push signal to webapp regardless of mode
@@ -4811,7 +4813,12 @@ def run_session_bot_loop() -> None:
                         traceback.print_exc()
 
             cycle_data["metrics"] = compute_metrics(cycle_data["trades"])
-            push_all_data(cycle_data)
+            push_data = dict(cycle_data)
+            push_data["signals"] = [
+                s.to_dict() if hasattr(s, "to_dict") else s
+                for s in cycle_data.get("signals", [])
+            ]
+            push_all_data(push_data)
             # ── Deriv trade execution ─────────────────────────────────
             log_info(f"[Deriv] Reached execution block. Token={bool(os.environ.get('DERIV_API_TOKEN'))}")
             if os.environ.get("DERIV_API_TOKEN", ""):
