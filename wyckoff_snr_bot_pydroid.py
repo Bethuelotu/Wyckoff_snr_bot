@@ -5111,8 +5111,9 @@ _DERIV_TOKEN: str  = os.environ.get("DERIV_API_TOKEN", "")
 _DERIV_DEMO:  bool = os.environ.get("DERIV_DEMO", "1") == "1"
 
 # ── Deriv WebSocket endpoints ─────────────────────────────────────────
-_DERIV_WS_DEMO = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
-_DERIV_WS_REAL = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
+_DERIV_APP_ID  = os.environ.get("DERIV_APP_ID", "1089")
+_DERIV_WS_DEMO = f"wss://ws.binaryws.com/websockets/v3?app_id={_DERIV_APP_ID}"
+_DERIV_WS_REAL = f"wss://ws.binaryws.com/websockets/v3?app_id={_DERIV_APP_ID}"
 
 # ── Symbol maps ───────────────────────────────────────────────────────
 # Bot internal symbol → Deriv API symbol
@@ -5465,7 +5466,8 @@ class DerivBroker(BrokerBase):
             return True
 
         err = resp.get("error", {}).get("message", "unknown") if resp else "no response"
-        log_error(f"[Deriv] Auth failed: {err}")
+        err_code = resp.get("error", {}).get("code", "") if resp else ""
+        log_error(f"[Deriv] Auth failed: {err} (code={err_code}) token_len={len(self._token)}")
         self._authed = False
         return False
 
@@ -6046,9 +6048,10 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
             log_info(f"[Deriv] Connecting to {_deriv_broker._ws_url}")
             connected = _deriv_broker._ensure_connected()
             log_info(f"[Deriv] Connection result: {connected}")
-            if not connected:
-                log_error("[Deriv] Auth failed - check DERIV_API_TOKEN")
-                return None
+        if not connected:
+            log_error("[Deriv] Auth failed - check DERIV_API_TOKEN and DERIV_APP_ID")
+            _deriv_broker = None   # reset so next scan creates a fresh instance
+            return None
         except Exception as _ce:
             log_error(f"[Deriv] Connection error: {_ce}")
             return None
