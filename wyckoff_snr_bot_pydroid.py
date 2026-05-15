@@ -6048,10 +6048,10 @@ def _get_deriv_broker() -> Optional[DerivBroker]:
             log_info(f"[Deriv] Connecting to {_deriv_broker._ws_url}")
             connected = _deriv_broker._ensure_connected()
             log_info(f"[Deriv] Connection result: {connected}")
-        if not connected:
-            log_error("[Deriv] Auth failed - check DERIV_API_TOKEN and DERIV_APP_ID")
-            _deriv_broker = None   # reset so next scan creates a fresh instance
-            return None
+            if not connected:
+                log_error("[Deriv] Auth failed - check DERIV_API_TOKEN and DERIV_APP_ID")
+                _deriv_broker = None   # reset so next scan creates a fresh instance
+                return None
         except Exception as _ce:
             log_error(f"[Deriv] Connection error: {_ce}")
             return None
