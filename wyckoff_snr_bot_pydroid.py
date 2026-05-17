@@ -4829,12 +4829,17 @@ def run_session_bot_loop() -> None:
                         deriv_sync_positions()
                 except Exception as _de:
                     log_error(f"[Deriv] Scan error: {_de}")
+                    log_info("[Deriv] Past scan_v2 block - proceeding to execution block")
             # ── Deriv trade execution ─────────────────────────────────
             log_info(f"[Deriv] Reached execution block. Token={bool(os.environ.get('DERIV_API_TOKEN'))}")
             if os.environ.get("DERIV_API_TOKEN", ""):
                 try:
+                    import sys as _sys
+                    _mod = _sys.modules[__name__] if __name__ in _sys.modules else None
                     _gdb = globals().get("_get_deriv_broker")
+                    log_info(f"[Deriv DEBUG] _gdb={_gdb} globals_keys_with_deriv={[k for k in globals() if 'deriv' in k.lower()]}")
                     _deriv_b = _gdb() if callable(_gdb) else None
+    
                 except Exception as _dbe:
                     log_error(f"[Deriv] broker error: {_dbe}")
                     _deriv_b = None
