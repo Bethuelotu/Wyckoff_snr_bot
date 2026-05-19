@@ -6037,9 +6037,9 @@ class DerivBroker(BrokerBase):
     }
     prop_resp = self._ws.send_recv(proposal_payload, timeout=15)
     if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
-        err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
-        log_error(f"[Deriv] proposal failed ({symbol}): {err}")
-        return None
+            err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
+            log_error(f"[Deriv] proposal failed ({symbol}): {err}")
+            return None
 
         proposal_id = prop_resp["proposal"]["id"]
 
