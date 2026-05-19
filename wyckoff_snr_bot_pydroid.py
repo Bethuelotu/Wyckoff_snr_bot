@@ -6022,11 +6022,11 @@ class DerivBroker(BrokerBase):
         # Step 1: Get proposal
         proposal_payload = {
             "proposal":       1,
+            "subscribe":      1,
             "amount":         stake,
             "basis":          "stake",
             "contract_type":  contract_type,
             "currency":       self._currency,
-            "duration_unit":  "s",
             "multiplier":     multiplier,
             "underlying_symbol": deriv_sym,
             "limit_order": {
