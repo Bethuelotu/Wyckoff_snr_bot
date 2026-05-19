@@ -6073,10 +6073,10 @@ class DerivBroker(BrokerBase):
                       f"id={contract_id}")
             return self._positions[contract_id]
 
-        err_resp = resp.get("error", {}) if resp else {}
-        err = err_resp.get("message", "timeout")
-        log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
-        return None
+            err_resp = resp.get("error", {}) if resp else {}
+            err = err_resp.get("message", "timeout")
+            log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
+            return None
 
     def close_position(self, contract_id: str) -> bool:
         """Sell (close) an open Multipliers contract."""
