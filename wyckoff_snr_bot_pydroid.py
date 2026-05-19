@@ -5543,12 +5543,15 @@ def _deriv_get_account_id(token: str, app_id: str, demo: bool) -> Optional[str]:
         return None
     target_type = "demo" if demo else "real"
     for acc in accounts:
+        # try both field name formats
+        acc_id = acc.get("accountId") or acc.get("account_id") or acc.get("id", "")
         if acc.get("account_type", "").lower() == target_type:
-            log_info(f"[Deriv] Found {target_type} account: {acc['accountId']}")
-            return acc["accountId"]
+            log_info(f"[Deriv] Found {target_type} account: {acc_id} full={acc}")
+            return acc_id
     # fallback: return first account
-    log_warn(f"[Deriv] No {target_type} account found, using first available")
-    return accounts[0]["accountId"]
+    log_warn(f"[Deriv] No {target_type} account found, using first: {accounts[0]}")
+    acc0 = accounts[0]
+    return acc0.get("accountId") or acc0.get("account_id") or acc0.get("id", "")
 
 
 def _deriv_get_otp_url(token: str, app_id: str,
