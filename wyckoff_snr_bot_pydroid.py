@@ -6019,26 +6019,41 @@ class DerivBroker(BrokerBase):
 
         contract_type = "MULTUP" if direction == "BUY" else "MULTDOWN"
 
-        payload = {
-            "buy": 1,
-            "price": stake,
-            "parameters": {
-                "contract_type":  contract_type,
-                "symbol":         deriv_sym,
-                "amount":         stake,
-                "basis":          "stake",
-                "multiplier":     multiplier,
-                "limit_order": {
-                    "stop_loss":   {"order_type": "stop",   "order_amount": sl_usd},
-                    "take_profit": {"order_type": "take_profit", "order_amount": tp_usd},
-                },
+        # Step 1: Get proposal
+        proposal_payload = {
+            "proposal":       1,
+            "amount":         stake,
+            "basis":          "stake",
+            "contract_type":  contract_type,
+            "currency":       self._currency,
+            "duration_unit":  "s",
+            "multiplier":     multiplier,
+            "underlying_symbol": deriv_sym,
+            "limit_order": {
+                "stop_loss":   {"order_type": "stop",        "order_amount": sl_usd},
+                "take_profit": {"order_type": "take_profit",  "order_amount": tp_usd},
             },
             "req_id": self._next_id(),
-        }
+    }
+    prop_resp = self._ws.send_recv(proposal_payload, timeout=15)
+    if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
+        err = (prop_resp.get("error", {}).get("message", "no proposal")
+               if prop_resp else "timeout")
+        log_error(f"[Deriv] proposal failed ({symbol}): {err}")
+        return None
 
-        resp = self._ws.send_recv(payload, timeout=15)
+    proposal_id = prop_resp["proposal"]["id"]
 
-        if resp and "error" not in resp and "buy" in resp:
+    # Step 2: Buy using proposal ID
+    payload = {
+        "buy":    proposal_id,
+        "price":  stake,
+        "req_id": self._next_id(),
+    }
+
+    resp = self._ws.send_recv(payload, timeout=15)
+
+    if resp and "error" not in resp and "buy" in resp:
             buy_info    = resp["buy"]
             contract_id = str(buy_info.get("contract_id", ""))
             self._positions[contract_id] = {
