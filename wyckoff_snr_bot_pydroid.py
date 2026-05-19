@@ -6034,25 +6034,25 @@ class DerivBroker(BrokerBase):
                 "take_profit": {"order_type": "take_profit",  "order_amount": tp_usd},
             },
             "req_id": self._next_id(),
-    }
-    prop_resp = self._ws.send_recv(proposal_payload, timeout=15)
-    if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
+        }
+        prop_resp = self._ws.send_recv(proposal_payload, timeout=15)
+        if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
             err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
             log_error(f"[Deriv] proposal failed ({symbol}): {err}")
             return None
 
-    proposal_id = prop_resp["proposal"]["id"]
+        proposal_id = prop_resp["proposal"]["id"]
 
-    # Step 2: Buy using proposal ID
-    payload = {
+        # Step 2: Buy using proposal ID
+        payload = {
             "buy":    proposal_id,
             "price":  stake,
             "req_id": self._next_id(),
-    }
+        }
 
-    resp = self._ws.send_recv(payload, timeout=15)
+        resp = self._ws.send_recv(payload, timeout=15)
 
-    if resp and "error" not in resp and "buy" in resp:
+        if resp and "error" not in resp and "buy" in resp:
             buy_info    = resp["buy"]
             contract_id = str(buy_info.get("contract_id", ""))
             self._positions[contract_id] = {
