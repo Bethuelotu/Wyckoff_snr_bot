@@ -6073,8 +6073,7 @@ class DerivBroker(BrokerBase):
                       f"id={contract_id}")
             return self._positions[contract_id]
 
-        err = (resp.get("error", {}).get("message", "unknown")
-               if resp else "timeout")
+        err = (resp.get("error", {}).get("message", "unknown") if resp else "timeout")
         log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
         return None
 
