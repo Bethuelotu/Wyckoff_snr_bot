@@ -6020,9 +6020,8 @@ class DerivBroker(BrokerBase):
         contract_type = "MULTUP" if direction == "BUY" else "MULTDOWN"
 
         # Step 1: Get proposal
-        # subscribe:0 = one-shot response (subscribe:1 causes streaming
-        #               frames that confuse send_recv and cause timeout).
-        # "symbol" is the correct field name; "underlying_symbol" is wrong.
+        # subscribe:0 = one-shot (no streaming frames that block send_recv)
+        # "symbol" is the correct field name for this API
         proposal_payload = {
             "proposal":      1,
             "subscribe":     0,
@@ -6038,10 +6037,13 @@ class DerivBroker(BrokerBase):
             },
             "req_id": self._next_id(),
         }
-        prop_resp = self._ws.send_recv(proposal_payload, timeout=15)
+        prop_resp = self._ws.send_recv(proposal_payload, timeout=20)
         if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
             err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
             log_error(f"[Deriv] proposal failed ({symbol}): {err}")
+            # Force reconnect next attempt - connection may be stale
+            self._authed = False
+            self._ws = None
             return None
 
         proposal_id = prop_resp["proposal"]["id"]
@@ -6053,8 +6055,7 @@ class DerivBroker(BrokerBase):
             "req_id": self._next_id(),
         }
 
-        resp = self._ws.send_recv(payload, timeout=15)
-
+        resp = self._ws.send_recv(payload, timeout=20)
         if resp and "error" not in resp and "buy" in resp:
             buy_info    = resp["buy"]
             contract_id = str(buy_info.get("contract_id", ""))
@@ -6080,6 +6081,8 @@ class DerivBroker(BrokerBase):
         err_resp = resp.get("error", {}) if resp else {}
         err = err_resp.get("message", "timeout")
         log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
+        self._authed = False
+        self._ws = None
         return None
 
     def close_position(self, contract_id: str) -> bool:
