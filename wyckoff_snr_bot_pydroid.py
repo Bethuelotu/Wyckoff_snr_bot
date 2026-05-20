@@ -5674,12 +5674,16 @@ class DerivWSClient:
         masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
         return header + mask + masked
 
-    def _recv_frame(self) -> Optional[str]:
-        """Receive one WebSocket frame. Returns payload string or None."""
+    def _recv_frame(self, hard_timeout: float = 0.0) -> Optional[str]:
+        """Receive one WebSocket frame. Returns payload string or None.
+        hard_timeout > 0 means we are inside send_recv and expect a reply soon.
+        hard_timeout == 0 means non-blocking poll (returns None immediately if nothing there).
+        """
         if not self._sock:
             return None
         try:
-            self._sock.settimeout(0.5)   # short timeout - non-blocking
+            sock_timeout = hard_timeout if hard_timeout > 0 else 0.5
+            self._sock.settimeout(sock_timeout)
             # Read first 2 bytes (FIN + opcode + length)
             hdr = self._recv_exact(2)
             if not hdr:
@@ -5710,12 +5714,13 @@ class DerivWSClient:
             return None
 
     def _recv_exact(self, n: int) -> bytes:
-        """Receive exactly n bytes."""
+        """Receive exactly n bytes. Raises ConnectionError if connection closes early."""
         buf = b""
         while len(buf) < n:
             chunk = self._sock.recv(n - len(buf))
             if not chunk:
-                return buf
+                self._connected = False
+                raise ConnectionError("[Deriv WS] Connection closed mid-read")
             buf += chunk
         return buf
 
@@ -5759,13 +5764,18 @@ class DerivWSClient:
             return None
         deadline = time.time() + timeout
         while time.time() < deadline:
-            resp = self.recv()
-            if resp is None:
-                time.sleep(0.05)   # small sleep to avoid spinning
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
+            if raw is None:
+                continue
+            try:
+                resp = json.loads(raw)
+            except Exception:
                 continue
             if resp.get("req_id") == req_id or "error" in resp:
                 return resp
-            time.sleep(0.05)
         log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
         return None
 
