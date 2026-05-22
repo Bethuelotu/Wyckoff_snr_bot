@@ -6069,6 +6069,7 @@ class DerivBroker(BrokerBase):
             },
             "req_id": self._next_id(),
         }
+        log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
         prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
         prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
         if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
