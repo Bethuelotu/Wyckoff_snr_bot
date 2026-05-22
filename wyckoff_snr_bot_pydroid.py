@@ -5693,6 +5693,15 @@ class DerivWSClient:
 
             if opcode == 8:   # close frame
                 self._connected = False
+                reason = ""
+                if length >= 2:
+                    code_bytes = self._recv_exact(2)
+                    code = _struct.unpack("!H", code_bytes)[0]
+                    if length > 2:
+                        reason = self._recv_exact(length - 2).decode("utf-8", errors="replace")
+                    log_warn(f"[Deriv WS] Server closed connection: code={code} reason={reason}")
+                else:
+                    log_warn(f"[Deriv WS] Server closed connection (no reason given)")
                 return None
             if opcode == 9:   # ping
                 self._send_pong()
