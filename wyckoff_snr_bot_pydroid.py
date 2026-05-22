@@ -6047,25 +6047,28 @@ class DerivBroker(BrokerBase):
             },
             "req_id": self._next_id(),
         }
-        prop_resp = self._ws.send_recv(proposal_payload, timeout=20)
+        prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
+        prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
         if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
             err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
             log_error(f"[Deriv] proposal failed ({symbol}): {err}")
-            # Force reconnect next attempt - connection may be stale
             self._authed = False
             self._ws = None
             return None
 
-        proposal_id = prop_resp["proposal"]["id"]
+        proposal_data = prop_resp["proposal"]
+        proposal_id   = proposal_data.get("id") or proposal_data.get("proposal_id")
+        ask_price     = proposal_data.get("ask_price", stake)
 
-        # Step 2: Buy using proposal ID
+        # Step 2: Buy using proposal ID and ask_price (NOT stake)
+        # Deriv requires the exact ask_price returned from the proposal
         payload = {
             "buy":    proposal_id,
-            "price":  stake,
+            "price":  ask_price,
             "req_id": self._next_id(),
         }
 
-        resp = self._ws.send_recv(payload, timeout=20)
+        resp = self._ws.send_recv(payload, timeout=60)
         if resp and "error" not in resp and "buy" in resp:
             buy_info    = resp["buy"]
             contract_id = str(buy_info.get("contract_id", ""))
