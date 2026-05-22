@@ -5758,26 +5758,34 @@ class DerivWSClient:
             return None
 
     def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
-        """Send and wait for matching response (by req_id or first reply)."""
-        req_id = payload.get("req_id", 1)
-        if not self.send(payload):
-            return None
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
-            if raw is None:
-                continue
+        """Send and wait for matching response. Auto-reconnects once if connection dropped."""
+        for attempt in range(2):
             try:
-                resp = json.loads(raw)
-            except Exception:
-                continue
-            if resp.get("req_id") == req_id or "error" in resp:
-                return resp
-        log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
-        return None
+                req_id = payload.get("req_id", 1)
+                if not self.send(payload):
+                    return None
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        break
+                    raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
+                    if raw is None:
+                        continue
+                    try:
+                        resp = json.loads(raw)
+                    except Exception:
+                        continue
+                    if resp.get("req_id") == req_id or "error" in resp:
+                        return resp
+                log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
+                return None
+            except ConnectionError:
+                log_warn(f"[Deriv WS] Connection dropped, reconnecting (attempt {attempt+1})...")
+                self._connected = False
+                if attempt == 0 and self._ensure_connected():
+                    continue
+                return None
 
     @property
     def connected(self) -> bool:
@@ -5846,6 +5854,9 @@ class DerivBroker(BrokerBase):
         """
         if self._ws and self._ws.connected and self._authed:
             return True
+        # Reset stale connection before reconnecting
+        self._authed = False
+        self._ws = None
         if not self._token or not self._app_id:
             return False
 
