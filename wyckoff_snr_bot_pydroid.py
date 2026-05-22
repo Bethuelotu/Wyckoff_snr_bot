@@ -5772,10 +5772,12 @@ class DerivWSClient:
                     raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
                     if raw is None:
                         continue
+                    log_info(f"[Deriv WS] RAW FRAME: {raw[:500]}")
                     try:
                         resp = json.loads(raw)
                     except Exception:
                         continue
+                    log_info(f"[Deriv WS] req_id={resp.get('req_id')} expected={req_id} keys={list(resp.keys())}")
                     if resp.get("req_id") == req_id or "error" in resp:
                         return resp
                 log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
