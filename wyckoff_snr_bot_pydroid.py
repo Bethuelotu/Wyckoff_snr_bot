@@ -5858,48 +5858,56 @@ class DerivBroker(BrokerBase):
 
     def _ensure_connected(self) -> bool:
         """
-        Multipliers require ws.derivws.com with authorize token.
-        The OTP flow only supports Options contracts.
+        New OTP flow:
+        1. GET /accounts  → find demo or real account ID
+        2. POST /accounts/{id}/otp → get WebSocket URL
+        3. Connect WebSocket to that URL (no further auth needed)
         """
-        # Reset any stale connection
-        self._authed = False
-        self._ws = None
-
-        if not self._token:
-            log_error("[Deriv] No DERIV_API_TOKEN set")
+        if self._ws and self._ws.connected and self._authed:
+            return True
+        if not self._token or not self._app_id:
             return False
 
-        app_id = self._app_id
-        if not app_id:
-            log_error("[Deriv] No DERIV_APP_ID set in environment variables")
+        # Step 1: get account ID
+        log_info("[Deriv] Fetching account list...")
+        account_id = _deriv_get_account_id(
+            self._token, self._app_id, self._demo)
+        if not account_id:
+            log_error("[Deriv] Could not find account ID")
             return False
-        ws_url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
 
-        log_info("[Deriv] Connecting to ws.derivws.com for Multipliers...")
+        # Step 2: get OTP WebSocket URL
+        log_info(f"[Deriv] Fetching OTP for account {account_id}...")
+        ws_url = _deriv_get_otp_url(self._token, self._app_id, account_id)
+        if not ws_url:
+            log_error("[Deriv] Could not get OTP WebSocket URL")
+            return False
+
+        # Step 3: connect WebSocket
         self._ws = DerivWSClient(ws_url)
         if not self._ws.connect():
             log_error("[Deriv] WebSocket connection failed")
             self._ws = None
             return False
 
-        # Authorize with API token
-        resp = self._ws.send_recv({
-            "authorize": self._token,
-            "req_id":    self._next_id(),
-        }, timeout=30)
-
-        if not resp or "error" in resp or "authorize" not in resp:
-            err = resp.get("error", {}).get("message", "no response") if resp else "timeout"
-            log_error(f"[Deriv] Authorization failed: {err}")
-            self._ws = None
-            return False
-
-        self._authed   = True
-        auth_info      = resp["authorize"]
-        self._balance  = float(auth_info.get("balance", 0))
-        self._currency = auth_info.get("currency", "USD")
+        # OTP URL authenticates automatically — no authorize call needed
+        self._authed = True
         mode = "DEMO" if self._demo else "REAL"
-        log_info(f"[Deriv] Authorized ({mode}) balance={self._balance} {self._currency}")
+        log_info(f"[Deriv] Connected ({mode}) via OTP WebSocket")
+
+        # Fetch balance to confirm connection works
+        try:
+            resp = self._ws.send_recv({
+                "balance": 1,
+                "req_id":  self._next_id(),
+            }, timeout=8)
+            if resp and "balance" in resp:
+                self._balance  = float(resp["balance"].get("balance", 0))
+                self._currency = resp["balance"].get("currency", "USD")
+                log_info(f"[Deriv] Balance: {self._balance} {self._currency}")
+        except Exception as _be:
+            log_warn(f"[Deriv] Could not fetch balance: {_be}")
+
         return True
 
     # ── BrokerBase interface ─────────────────────────────────────────
