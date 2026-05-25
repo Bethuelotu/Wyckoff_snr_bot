@@ -7530,6 +7530,19 @@ def run_deriv_scan_v2(signals: List["Signal"]) -> None:
         else:
             log_warn(f"[Deriv] {symbol} - no trades executed")
 
+def _keep_alive():
+    """Ping own server every 5 minutes to prevent Render free tier spin-down."""
+    while True:
+        time.sleep(300)
+        try:
+            url = os.environ.get("RENDER_EXTERNAL_URL", "")
+            if url:
+                urllib.request.urlopen(url + "/health", timeout=10)
+                log_info("[KeepAlive] Pinged self to prevent spin-down")
+        except Exception:
+            pass
+
+threading.Thread(target=_keep_alive, daemon=True).start()
 if __name__ == "__main__":
     render_env = _os.environ.get("RENDER") or _os.environ.get("PORT")
 
