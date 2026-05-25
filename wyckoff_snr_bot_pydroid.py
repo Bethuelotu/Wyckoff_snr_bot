@@ -6033,6 +6033,7 @@ class DerivBroker(BrokerBase):
             sl_usd    : stop loss in USD (from DERIV_CONFIG if not provided)
             tp_usd    : take profit in USD (from DERIV_CONFIG if not provided)
         """
+        log_info(f"[Deriv] place_multiplier called: {symbol} {direction} stake={stake} mult={multiplier}")
         if not self._ensure_connected():
             log_error("[Deriv] Cannot place order - not connected")
             return None
