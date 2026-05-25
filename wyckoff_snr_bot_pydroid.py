@@ -5683,7 +5683,7 @@ class DerivWSClient:
             return None
         try:
             sock_timeout = hard_timeout if hard_timeout > 0 else 0.5
-            self._sock.settimeout(sock_timeout)
+            self._sock.settimeout(min(sock_timeout, 30.0))
             # Read first 2 bytes (FIN + opcode + length)
             hdr = self._recv_exact(2)
             if not hdr:
@@ -6072,7 +6072,11 @@ class DerivBroker(BrokerBase):
         }
         log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
         prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
-        prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
+        # Unsubscribe immediately after getting first proposal response
+        if prop_resp and "proposal" in prop_resp:
+            sub_id = prop_resp.get("subscription", {}).get("id")
+            if sub_id:
+                self._ws.send({"forget": sub_id, "req_id": self._next_id()})
         if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
             err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
             log_error(f"[Deriv] proposal failed ({symbol}): {err}")
