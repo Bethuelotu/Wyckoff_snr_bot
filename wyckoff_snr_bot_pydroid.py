@@ -7180,11 +7180,16 @@ class DerivTradeWatcher:
     MOMENTUM_FLIP_THRESH = -0.3  # momentum score below this = flip detected
 
     def __init__(self, broker: DerivBroker, account_mgr: AccountManager):
-        self._broker      = broker
         self._acct        = account_mgr
         self._running     = False
         self._thread: Optional[_dthread.Thread] = None
         self._watch_list: Dict[str, Dict] = {}  # contract_id -> position info
+        # Own independent broker connection - never shares with main bot
+        self._broker = DerivBroker(
+            token   = broker._token,
+            app_id  = broker._app_id,
+            demo    = broker._demo,
+        )
 
     def start(self) -> None:
         """Start the watcher background thread."""
