@@ -6030,10 +6030,12 @@ class DerivBroker(BrokerBase):
             tp_usd    : take profit in USD (from DERIV_CONFIG if not provided)
         """
         log_info(f"[Deriv] place_multiplier called: {symbol} {direction} stake={stake} mult={multiplier}")
+        # Force fresh OTP connection immediately before proposal
+        self._authed = False
+        self._ws = None
         if not self._ensure_connected():
             log_error("[Deriv] Cannot place order - not connected")
             return None
-
         deriv_sym  = (DERIV_FOREX_MAP.get(symbol)
                       or DERIV_SYNTHETIC_MAP.get(symbol)
                       or symbol)
