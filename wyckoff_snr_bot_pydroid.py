@@ -5717,6 +5717,9 @@ class DerivWSClient:
 
         except _socket.timeout:
             return None
+        except ConnectionError:
+            self._connected = False
+            raise   # let send_recv handle it, don't swallow
         except Exception as e:
             log_error(f"[Deriv WS] recv error: {e}")
             self._connected = False
@@ -5773,6 +5776,9 @@ class DerivWSClient:
             return None
         deadline = time.time() + timeout
         while time.time() < deadline:
+            if not self._connected:
+                log_warn("[Deriv WS] Connection lost during recv loop")
+                return None
             remaining = deadline - time.time()
             if remaining <= 0:
                 break
