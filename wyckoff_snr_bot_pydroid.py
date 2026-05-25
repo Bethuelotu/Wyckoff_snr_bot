@@ -5935,7 +5935,6 @@ class DerivBroker(BrokerBase):
                      or symbol)
         resp = self._ws.send_recv({
             "ticks": deriv_sym,
-            "subscribe": 0,
             "req_id": self._next_id(),
         }, timeout=8)
         if resp and "tick" in resp:
