@@ -5869,7 +5869,10 @@ class DerivBroker(BrokerBase):
             log_error("[Deriv] No DERIV_API_TOKEN set")
             return False
 
-        app_id = self._app_id or "1089"
+        app_id = self._app_id
+        if not app_id:
+            log_error("[Deriv] No DERIV_APP_ID set in environment variables")
+            return False
         ws_url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
 
         log_info("[Deriv] Connecting to ws.derivws.com for Multipliers...")
