@@ -6057,13 +6057,13 @@ class DerivBroker(BrokerBase):
         # "symbol" is the correct field name for this API
         proposal_payload = {
             "proposal":      1,
-            "subscribe":     0,
+            "subscribe":     1,
             "amount":        stake,
             "basis":         "stake",
             "contract_type": contract_type,
             "currency":      self._currency,
             "multiplier":    multiplier,
-            "symbol":        deriv_sym,
+            "underlying_symbol":   deriv_sym,
             "limit_order": {
                 "stop_loss":   {"order_type": "stop",        "order_amount": sl_usd},
                 "take_profit": {"order_type": "take_profit", "order_amount": tp_usd},
