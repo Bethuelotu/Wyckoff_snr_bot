@@ -6054,7 +6054,6 @@ class DerivBroker(BrokerBase):
         # subscribe:0 = one-shot (no streaming frames that block send_recv)
         # "symbol" is the correct field name for this API
         proposal_payload = {
-        proposal_payload = {
             "proposal":        1,
             "subscribe":       0,
             "amount":          stake,
