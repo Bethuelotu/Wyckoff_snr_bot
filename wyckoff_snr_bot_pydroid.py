@@ -6054,17 +6054,20 @@ class DerivBroker(BrokerBase):
         # subscribe:0 = one-shot (no streaming frames that block send_recv)
         # "symbol" is the correct field name for this API
         proposal_payload = {
-            "proposal":      1,
-            "subscribe":     0,
-            "amount":        stake,
-            "basis":         "stake",
-            "contract_type": contract_type,
-            "currency":      self._currency,
-            "multiplier":    multiplier,
-            "underlying_symbol":   deriv_sym,
+        proposal_payload = {
+            "proposal":        1,
+            "subscribe":       0,
+            "amount":          stake,
+            "basis":           "stake",
+            "contract_type":   contract_type,
+            "currency":        self._currency,
+            "multiplier":      multiplier,
+            "underlying_symbol": deriv_sym,
+            "duration":        5,
+            "duration_unit":   "m",
             "limit_order": {
-                "stop_loss":   {"order_type": "stop",        "order_amount": sl_usd},
-                "take_profit": {"order_type": "take_profit", "order_amount": tp_usd},
+                "stop_loss":   sl_usd,
+                "take_profit": tp_usd,
             },
             "req_id": self._next_id(),
         }
@@ -7187,7 +7190,6 @@ class DerivTradeWatcher:
         # Own independent broker connection - never shares with main bot
         self._broker = DerivBroker(
             token   = broker._token,
-            app_id  = broker._app_id,
             demo    = broker._demo,
         )
 
