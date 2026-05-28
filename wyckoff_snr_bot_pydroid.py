@@ -5775,7 +5775,11 @@ class DerivWSClient:
         if not self.send(payload):
             return None
         deadline = time.time() + timeout
+        last_ping = time.time()
         while time.time() < deadline:
+            if time.time() - last_ping >= 20:
+                self.send({"ping": 1})
+                last_ping = time.time()
             if not self._connected:
                 log_warn("[Deriv WS] Connection lost during recv loop")
                 return None
