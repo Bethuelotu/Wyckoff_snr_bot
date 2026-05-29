@@ -5795,7 +5795,14 @@ class DerivWSClient:
             except Exception:
                 continue
             log_info(f"[Deriv WS] req_id={resp.get('req_id')} expected={req_id} keys={list(resp.keys())}")
-            if resp.get("req_id") == req_id or "error" in resp:
+            resp_req_id = resp.get("req_id")
+            msg_type = resp.get("msg_type", "")
+            if resp_req_id == req_id:
+                return resp
+            if "error" in resp and resp_req_id == req_id:
+                return resp
+            if msg_type == "proposal" and resp_req_id != req_id:
+                log_warn(f"[Deriv WS] Proposal response has unexpected req_id={resp_req_id} expected={req_id} - accepting anyway")
                 return resp
         log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
         return None
