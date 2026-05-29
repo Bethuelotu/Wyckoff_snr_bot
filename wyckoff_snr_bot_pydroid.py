@@ -5867,9 +5867,6 @@ class DerivBroker(BrokerBase):
         """
         if self._ws and self._ws.connected and self._authed:
             return True
-        # Reset stale connection before reconnecting
-        self._authed = False
-        self._ws = None
         if not self._token or not self._app_id:
             return False
         # Step 1: get account ID
@@ -6034,9 +6031,7 @@ class DerivBroker(BrokerBase):
             tp_usd    : take profit in USD (from DERIV_CONFIG if not provided)
         """
         log_info(f"[Deriv] place_multiplier called: {symbol} {direction} stake={stake} mult={multiplier}")
-        # Force fresh OTP connection immediately before proposal
-        self._authed = False
-        self._ws = None
+        # Reuse existing OTP connection - only reconnect if actually disconnected
         if not self._ensure_connected():
             log_error("[Deriv] Cannot place order - not connected")
             return None
