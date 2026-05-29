@@ -5471,10 +5471,11 @@ DERIV_CONFIG: Dict = {
     # Account building - scales with balance
     "stages": [
         # (min_balance, max_balance, stake, multiplier, max_trades)
-        (0.00,   10.00,  1.00,  10,  2),
-        (10.00,  50.00,  1.00,  20,  3),
-        (50.00,  200.0,  2.00,  20,  4),
-        (200.0,  9999.,  5.00,  50,  5),
+        # Forex Multipliers minimum is 50 (10/20 only valid for synthetics)
+        (0.00,   10.00,  1.00,  50,  2),
+        (10.00,  50.00,  1.00,  100, 3),
+        (50.00,  200.0,  2.00,  100, 4),
+        (200.0,  9999.,  5.00,  200, 5),
     ],
 
     # Risk per trade
@@ -6070,10 +6071,11 @@ class DerivBroker(BrokerBase):
             "underlying_symbol": deriv_sym,
             "duration":        5,
             "duration_unit":   "m",
-            "limit_order": {
-                "stop_loss":   sl_usd,
-                "take_profit": tp_usd,
-            },
+            # limit_order temporarily removed for testing
+            # "limit_order": {
+            #     "stop_loss":   sl_usd,
+            #     "take_profit": tp_usd,
+            # },
             "req_id": self._next_id(),
         }
         log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
@@ -6231,7 +6233,7 @@ class DerivRiskManager:
                     "max_balance": max_b,
                 }
         # Fallback - safest stage
-        return {"stake": 1.00, "multiplier": 10, "max_trades": 2,
+        return {"stake": 1.00, "multiplier": 50, "max_trades": 2,
                 "min_balance": 0, "max_balance": 10}
 
     def can_trade(self, current_balance: float,
