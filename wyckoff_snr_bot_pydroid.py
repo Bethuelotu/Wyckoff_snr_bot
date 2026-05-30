@@ -6069,8 +6069,6 @@ class DerivBroker(BrokerBase):
             "currency":        self._currency,
             "multiplier":      multiplier,
             "underlying_symbol": deriv_sym,
-            "duration":        5,
-            "duration_unit":   "m",
             # limit_order temporarily removed for testing
             # "limit_order": {
             #     "stop_loss":   sl_usd,
