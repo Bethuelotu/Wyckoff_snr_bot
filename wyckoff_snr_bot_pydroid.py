@@ -6076,6 +6076,9 @@ class DerivBroker(BrokerBase):
             # },
             "req_id": self._next_id(),
         }
+        # Verify connection still alive before proposal
+        ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
+        log_info(f"[Deriv] Pre-proposal ping: {ping_resp}")
         log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
         prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
         # Unsubscribe immediately after getting first proposal response
