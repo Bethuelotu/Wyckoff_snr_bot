@@ -5594,7 +5594,8 @@ class DerivWSClient:
     def __init__(self, url: str):
         self._url      = url
         self._sock     = None
-        self._lock     = _dthread.Lock()
+        self._lock        = _dthread.RLock()
+        self._frame_queue = {}  # req_id -> response, for out-of-order frames
         self._connected = False
 
     # ── Connection ───────────────────────────────────────────────────
@@ -5774,8 +5775,11 @@ class DerivWSClient:
         """Send and wait for matching response (by req_id). Thread-safe."""
         with self._lock:
             req_id = payload.get("req_id", 1)
-            if not self.send(payload):
-                return None
+        # Check if response already arrived out-of-order
+        if req_id in self._frame_queue:
+            return self._frame_queue.pop(req_id)
+        if not self.send(payload):
+            return None
             deadline = time.time() + timeout
             last_ping = time.time()
             while time.time() < deadline:
@@ -5801,12 +5805,11 @@ class DerivWSClient:
                 msg_type = resp.get("msg_type", "")
                 if resp_req_id == req_id:
                     return resp
-                if "error" in resp:
-                    log_warn(f"[Deriv WS] Error response req_id={resp_req_id} expected={req_id}: {resp.get('error',{}).get('message','')}")
-                    return resp
-                if msg_type == "proposal":
-                    log_warn(f"[Deriv WS] Proposal response req_id={resp_req_id} expected={req_id} - accepting")
-                    return resp
+                if resp_req_id != req_id:
+                    # Frame belongs to another request - store it and keep waiting
+                    log_info(f"[Deriv WS] Queuing frame req_id={resp_req_id} (waiting for {req_id})")
+                    self._frame_queue[resp_req_id] = resp
+                    continue
             log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
             return None
 
