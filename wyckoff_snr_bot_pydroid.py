@@ -5771,43 +5771,44 @@ class DerivWSClient:
             return None
 
     def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
-        """Send and wait for matching response (by req_id)."""
-        req_id = payload.get("req_id", 1)
-        if not self.send(payload):
-            return None
-        deadline = time.time() + timeout
-        last_ping = time.time()
-        while time.time() < deadline:
-            if time.time() - last_ping >= 20:
-                self.send({"ping": 1})
-                last_ping = time.time()
-            if not self._connected:
-                log_warn("[Deriv WS] Connection lost during recv loop")
+        """Send and wait for matching response (by req_id). Thread-safe."""
+        with self._lock:
+            req_id = payload.get("req_id", 1)
+            if not self.send(payload):
                 return None
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
-            if raw is None:
-                continue
-            log_info(f"[Deriv WS] RAW FRAME: {raw[:500]}")
-            try:
-                resp = json.loads(raw)
-            except Exception:
-                continue
-            log_info(f"[Deriv WS] req_id={resp.get('req_id')} expected={req_id} keys={list(resp.keys())}")
-            resp_req_id = resp.get("req_id")
-            msg_type = resp.get("msg_type", "")
-            if resp_req_id == req_id:
-                return resp
-            if "error" in resp:
-                log_warn(f"[Deriv WS] Error response req_id={resp_req_id} expected={req_id}: {resp.get('error',{}).get('message','')}")
-                return resp
-            if msg_type == "proposal":
-                log_warn(f"[Deriv WS] Proposal response req_id={resp_req_id} expected={req_id} - accepting")
-                return resp
-        log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
-        return None
+            deadline = time.time() + timeout
+            last_ping = time.time()
+            while time.time() < deadline:
+                if time.time() - last_ping >= 20:
+                    self.send({"ping": 1})
+                    last_ping = time.time()
+                if not self._connected:
+                    log_warn("[Deriv WS] Connection lost during recv loop")
+                    return None
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
+                if raw is None:
+                    continue
+                log_info(f"[Deriv WS] RAW FRAME: {raw[:500]}")
+                try:
+                    resp = json.loads(raw)
+                except Exception:
+                    continue
+                log_info(f"[Deriv WS] req_id={resp.get('req_id')} expected={req_id} keys={list(resp.keys())}")
+                resp_req_id = resp.get("req_id")
+                msg_type = resp.get("msg_type", "")
+                if resp_req_id == req_id:
+                    return resp
+                if "error" in resp:
+                    log_warn(f"[Deriv WS] Error response req_id={resp_req_id} expected={req_id}: {resp.get('error',{}).get('message','')}")
+                    return resp
+                if msg_type == "proposal":
+                    log_warn(f"[Deriv WS] Proposal response req_id={resp_req_id} expected={req_id} - accepting")
+                    return resp
+            log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
+            return None
 
     @property
     def connected(self) -> bool:
