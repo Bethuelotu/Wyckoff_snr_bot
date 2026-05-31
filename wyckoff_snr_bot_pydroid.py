@@ -6069,7 +6069,7 @@ class DerivBroker(BrokerBase):
         # "symbol" is the correct field name for this API
         proposal_payload = {
             "proposal":        1,
-            "subscribe":       0,
+            "subscribe":       1,
             "amount":          stake,
             "basis":           "stake",
             "contract_type":   contract_type,
