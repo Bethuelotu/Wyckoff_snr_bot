@@ -5450,11 +5450,11 @@ DERIV_FOREX_MAP: Dict[str, str] = {
 }
 
 DERIV_SYNTHETIC_MAP: Dict[str, str] = {
-    "VOLATILITY_10":  "R_10",
-    "VOLATILITY_25":  "R_25",
-    "VOLATILITY_50":  "R_50",
-    "VOLATILITY_75":  "R_75",
-    "VOLATILITY_100": "R_100",
+    "VOLATILITY_10":  "1HZ10V",
+    "VOLATILITY_25":  "1HZ25V",
+    "VOLATILITY_50":  "1HZ50V",
+    "VOLATILITY_75":  "1HZ75V",
+    "VOLATILITY_100": "1HZ100V",
 }
 
 # Reverse map: Deriv symbol → bot internal
@@ -5800,10 +5800,11 @@ class DerivWSClient:
             msg_type = resp.get("msg_type", "")
             if resp_req_id == req_id:
                 return resp
-            if "error" in resp and resp_req_id == req_id:
+            if "error" in resp:
+                log_warn(f"[Deriv WS] Error response req_id={resp_req_id} expected={req_id}: {resp.get('error',{}).get('message','')}")
                 return resp
-            if msg_type == "proposal" and resp_req_id != req_id:
-                log_warn(f"[Deriv WS] Proposal response has unexpected req_id={resp_req_id} expected={req_id} - accepting anyway")
+            if msg_type == "proposal":
+                log_warn(f"[Deriv WS] Proposal response req_id={resp_req_id} expected={req_id} - accepting")
                 return resp
         log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
         return None
@@ -6051,7 +6052,10 @@ class DerivBroker(BrokerBase):
         rm         = DerivRiskManager(self._balance)
         stage      = rm.current_stage()
         stake      = stake      or stage["stake"]
-        multiplier = multiplier or stage["multiplier"]
+        # Forex uses 50+ multipliers, synthetics use 40+
+        if multiplier is None:
+            is_synthetic = symbol in DERIV_SYNTHETIC_MAP or deriv_sym in DERIV_SYNTHETIC_MAP.values()
+            multiplier = 40 if is_synthetic else stage["multiplier"]
         sl_usd     = sl_usd     or DERIV_CONFIG["stop_loss_usd"]
         tp_usd     = tp_usd     or DERIV_CONFIG["take_profit_usd"]
 
