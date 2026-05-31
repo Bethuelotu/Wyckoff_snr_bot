@@ -5774,11 +5774,11 @@ class DerivWSClient:
     def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
         """Send and wait for matching response (by req_id)."""
         req_id = payload.get("req_id", 1)
-    # Check if response already arrived out-of-order
-    if req_id in self._frame_queue:
-        return self._frame_queue.pop(req_id)
-    if not self.send(payload):
-        return None
+        # Check if response already arrived out-of-order
+        if req_id in self._frame_queue:
+            return self._frame_queue.pop(req_id)
+        if not self.send(payload):
+            return None
         deadline = time.time() + timeout
         last_ping = time.time()
         while time.time() < deadline:
