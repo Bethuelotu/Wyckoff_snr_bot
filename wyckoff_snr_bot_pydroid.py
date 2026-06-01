@@ -5853,6 +5853,7 @@ class DerivBroker(BrokerBase):
         self._balance   = 0.0
         self._currency  = "USD"
         self._lock      = _dthread.Lock()
+        self._place_lock = _dthread.Lock()
         self._req_id    = 1
         self._positions: Dict[str, Dict] = {}
 
@@ -6043,105 +6044,112 @@ class DerivBroker(BrokerBase):
             tp_usd    : take profit in USD (from DERIV_CONFIG if not provided)
         """
         log_info(f"[Deriv] place_multiplier called: {symbol} {direction} stake={stake} mult={multiplier}")
-        # Reuse existing OTP connection - only reconnect if actually disconnected
-        if not self._ensure_connected():
-            log_error("[Deriv] Cannot place order - not connected")
+        if not self._place_lock.acquire(blocking=False):
+            log_warn(f"[Deriv] Trade already in progress - skipping {symbol}")
             return None
-        deriv_sym  = (DERIV_FOREX_MAP.get(symbol)
-                      or DERIV_SYNTHETIC_MAP.get(symbol)
-                      or symbol)
+        try:
+            # Reuse existing OTP connection - only reconnect if actually disconnected
+            if not self._ensure_connected():
+                log_error("[Deriv] Cannot place order - not connected")
+                self._place_lock.release()
+                return None
+            deriv_sym  = (DERIV_FOREX_MAP.get(symbol)
+                          or DERIV_SYNTHETIC_MAP.get(symbol)
+                          or symbol)
 
-        # Get risk params from manager if not provided
-        rm         = DerivRiskManager(self._balance)
-        stage      = rm.current_stage()
-        stake      = stake      or stage["stake"]
-        # Forex uses 50+ multipliers, synthetics use 40+
-        if multiplier is None:
-            is_synthetic = symbol in DERIV_SYNTHETIC_MAP or deriv_sym in DERIV_SYNTHETIC_MAP.values()
-            multiplier = 40 if is_synthetic else stage["multiplier"]
-        sl_usd     = sl_usd     or DERIV_CONFIG["stop_loss_usd"]
-        tp_usd     = tp_usd     or DERIV_CONFIG["take_profit_usd"]
+            # Get risk params from manager if not provided
+            rm         = DerivRiskManager(self._balance)
+            stage      = rm.current_stage()
+            stake      = stake      or stage["stake"]
+            # Forex uses 50+ multipliers, synthetics use 40+
+            if multiplier is None:
+                is_synthetic = symbol in DERIV_SYNTHETIC_MAP or deriv_sym in DERIV_SYNTHETIC_MAP.values()
+                multiplier = 40 if is_synthetic else stage["multiplier"]
+            sl_usd     = sl_usd     or DERIV_CONFIG["stop_loss_usd"]
+            tp_usd     = tp_usd     or DERIV_CONFIG["take_profit_usd"]
 
-        contract_type = "MULTUP" if direction == "BUY" else "MULTDOWN"
+            contract_type = "MULTUP" if direction == "BUY" else "MULTDOWN"
 
-        # Step 1: Get proposal
-        # subscribe:0 = one-shot (no streaming frames that block send_recv)
-        # "symbol" is the correct field name for this API
-        proposal_payload = {
-            "proposal":        1,
-            "amount":          stake,
-            "basis":           "stake",
-            "contract_type":   contract_type,
-            "currency":        self._currency,
-            "multiplier":      multiplier,
-            "underlying_symbol": deriv_sym,
-            # limit_order temporarily removed for testing
-            # "limit_order": {
-            #     "stop_loss":   sl_usd,
-            #     "take_profit": tp_usd,
-            # },
-            "req_id": self._next_id(),
-        }
-        # Verify connection still alive before proposal
-        ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
-        log_info(f"[Deriv] Pre-proposal ping: {ping_resp}")
-        ws_url = self._ws._url if hasattr(self._ws, '_url') else 'unknown'
-        log_info(f"[Deriv] Sending proposal via: {ws_url}")
-        log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
-        prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
-        # Unsubscribe immediately after getting first proposal response
-        if prop_resp and "proposal" in prop_resp:
-            sub_id = prop_resp.get("subscription", {}).get("id")
-            if sub_id:
-                self._ws.send({"forget": sub_id, "req_id": self._next_id()})
-        if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
-            err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
-            log_error(f"[Deriv] proposal failed ({symbol}): {err}")
+            # Step 1: Get proposal
+            # subscribe:0 = one-shot (no streaming frames that block send_recv)
+            # "symbol" is the correct field name for this API
+            proposal_payload = {
+                "proposal":        1,
+                "amount":          stake,
+                "basis":           "stake",
+                "contract_type":   contract_type,
+                "currency":        self._currency,
+                "multiplier":      multiplier,
+                "underlying_symbol": deriv_sym,
+                # limit_order temporarily removed for testing
+                # "limit_order": {
+                #     "stop_loss":   sl_usd,
+                #     "take_profit": tp_usd,
+                # },
+                "req_id": self._next_id(),
+            }
+            # Verify connection still alive before proposal
+            ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
+            log_info(f"[Deriv] Pre-proposal ping: {ping_resp}")
+            ws_url = self._ws._url if hasattr(self._ws, '_url') else 'unknown'
+            log_info(f"[Deriv] Sending proposal via: {ws_url}")
+            log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
+            prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
+            # Unsubscribe immediately after getting first proposal response
+            if prop_resp and "proposal" in prop_resp:
+                sub_id = prop_resp.get("subscription", {}).get("id")
+                if sub_id:
+                    self._ws.send({"forget": sub_id, "req_id": self._next_id()})
+            if not prop_resp or "error" in prop_resp or "proposal" not in prop_resp:
+                err = (prop_resp.get("error", {}).get("message", "no proposal") if prop_resp else "timeout")
+                log_error(f"[Deriv] proposal failed ({symbol}): {err}")
+                self._authed = False
+                self._ws = None
+                return None
+
+            proposal_data = prop_resp["proposal"]
+            proposal_id   = proposal_data.get("id") or proposal_data.get("proposal_id")
+            ask_price     = proposal_data.get("ask_price", stake)
+
+            # Step 2: Buy using proposal ID and ask_price (NOT stake)
+            # Deriv requires the exact ask_price returned from the proposal
+            payload = {
+                "buy":    proposal_id,
+                "price":  ask_price,
+                "req_id": self._next_id(),
+            }
+
+            resp = self._ws.send_recv(payload, timeout=60)
+            if resp and "error" not in resp and "buy" in resp:
+                buy_info    = resp["buy"]
+                contract_id = str(buy_info.get("contract_id", ""))
+                self._positions[contract_id] = {
+                    "contract_id":  contract_id,
+                    "symbol":       symbol,
+                    "deriv_symbol": deriv_sym,
+                    "direction":    direction,
+                    "stake":        stake,
+                    "multiplier":   multiplier,
+                    "sl_usd":       sl_usd,
+                    "tp_usd":       tp_usd,
+                    "buy_price":    buy_info.get("start_spot", 0),
+                    "opened_at":    datetime.now().isoformat(),
+                }
+                log_trade(f"[Deriv] {direction} {symbol} "
+                          f"stake=${stake} x{multiplier} "
+                          f"SL=${sl_usd} TP=${tp_usd} "
+                          f"id={contract_id}")
+                return self._positions[contract_id]
+
+            # Trade failed - log the reason
+            err_resp = resp.get("error", {}) if resp else {}
+            err = err_resp.get("message", "timeout")
+            log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
             self._authed = False
             self._ws = None
             return None
-
-        proposal_data = prop_resp["proposal"]
-        proposal_id   = proposal_data.get("id") or proposal_data.get("proposal_id")
-        ask_price     = proposal_data.get("ask_price", stake)
-
-        # Step 2: Buy using proposal ID and ask_price (NOT stake)
-        # Deriv requires the exact ask_price returned from the proposal
-        payload = {
-            "buy":    proposal_id,
-            "price":  ask_price,
-            "req_id": self._next_id(),
-        }
-
-        resp = self._ws.send_recv(payload, timeout=60)
-        if resp and "error" not in resp and "buy" in resp:
-            buy_info    = resp["buy"]
-            contract_id = str(buy_info.get("contract_id", ""))
-            self._positions[contract_id] = {
-                "contract_id":  contract_id,
-                "symbol":       symbol,
-                "deriv_symbol": deriv_sym,
-                "direction":    direction,
-                "stake":        stake,
-                "multiplier":   multiplier,
-                "sl_usd":       sl_usd,
-                "tp_usd":       tp_usd,
-                "buy_price":    buy_info.get("start_spot", 0),
-                "opened_at":    datetime.now().isoformat(),
-            }
-            log_trade(f"[Deriv] {direction} {symbol} "
-                      f"stake=${stake} x{multiplier} "
-                      f"SL=${sl_usd} TP=${tp_usd} "
-                      f"id={contract_id}")
-            return self._positions[contract_id]
-
-        # Trade failed - log the reason
-        err_resp = resp.get("error", {}) if resp else {}
-        err = err_resp.get("message", "timeout")
-        log_error(f"[Deriv] place_multiplier failed ({symbol}): {err}")
-        self._authed = False
-        self._ws = None
-        return None
+        finally:
+            self._place_lock.release()
 
     def close_position(self, contract_id: str) -> bool:
         """Sell (close) an open Multipliers contract."""
