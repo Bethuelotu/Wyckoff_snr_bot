@@ -5761,46 +5761,58 @@ class DerivWSClient:
         except Exception:
             return None
 
-    def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
+        def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
         """Send and wait for matching response (by req_id)."""
         req_id = payload.get("req_id", 1)
-        # Check if response already arrived out-of-order
+        
+        # 1. ALWAYS check if the frame is already in the queue before sending or blocking
         if req_id in self._frame_queue:
             return self._frame_queue.pop(req_id)
+            
         if not self.send(payload):
             return None
+            
         deadline = time.time() + timeout
         last_ping = time.time()
+        
         while time.time() < deadline:
+            # Check the queue at the top of every internal loop iteration 
+            # in case a background thread just stuffed it in there.
+            if req_id in self._frame_queue:
+                return self._frame_queue.pop(req_id)
+                
             if time.time() - last_ping >= 20:
                 self.send({"ping": 1})
                 last_ping = time.time()
+                
             if not self._connected:
                 log_warn("[Deriv WS] Connection lost during recv loop")
                 return None
+                
             remaining = deadline - time.time()
             if remaining <= 0:
                 break
-            raw = self._recv_frame(hard_timeout=min(remaining, 5.0))
+                
+            raw = self._recv_frame(hard_timeout=min(remaining, 2.0))
             if raw is None:
                 continue
-            log_info(f"[Deriv WS] RAW FRAME: {raw[:500]}")
+                
             try:
                 resp = json.loads(raw)
             except Exception:
                 continue
-            log_info(f"[Deriv WS] req_id={resp.get('req_id')} expected={req_id} keys={list(resp.keys())}")
+                
             resp_req_id = resp.get("req_id")
-            msg_type = resp.get("msg_type", "")
+            
             if resp_req_id == req_id:
                 return resp
-            if resp_req_id != req_id:
-                # Frame belongs to another request - store it and keep waiting
-                log_info(f"[Deriv WS] Queuing frame req_id={resp_req_id} (waiting for {req_id})")
+            else:
+                # Safely buffer frames meant for other layers
                 self._frame_queue[resp_req_id] = resp
-                continue
+                
         log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
         return None
+
 
     @property
     def connected(self) -> bool:
