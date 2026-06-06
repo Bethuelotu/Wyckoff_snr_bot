@@ -5761,7 +5761,7 @@ class DerivWSClient:
         except Exception:
             return None
 
-        def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
+    def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
         """Send and wait for matching response (by req_id)."""
         req_id = payload.get("req_id", 1)
         
