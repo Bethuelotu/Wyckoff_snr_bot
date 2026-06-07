@@ -5586,7 +5586,9 @@ class DerivWSClient:
         self._sock     = None
         self._lock        = _dthread.RLock()
         self._frame_queue = {}  # req_id -> response, for out-of-order frames
+        self._pending_events = {} # ADDED: Map req_id to threading.Event
         self._connected = False
+
 
     # ── Connection ───────────────────────────────────────────────────
 
@@ -5667,16 +5669,12 @@ class DerivWSClient:
         return header + mask + masked
 
     def _recv_frame(self, hard_timeout: float = 0.0) -> Optional[str]:
-        """Receive one WebSocket frame. Returns payload string or None.
-        hard_timeout > 0 means we are inside send_recv and expect a reply soon.
-        hard_timeout == 0 means non-blocking poll (returns None immediately if nothing there).
-        """
+        """Receive one WebSocket frame."""
         if not self._sock:
             return None
         try:
             sock_timeout = hard_timeout if hard_timeout > 0 else 0.5
             self._sock.settimeout(min(sock_timeout, 30.0))
-            # Read first 2 bytes (FIN + opcode + length)
             hdr = self._recv_exact(2)
             if not hdr:
                 return None
@@ -5685,15 +5683,6 @@ class DerivWSClient:
 
             if opcode == 8:   # close frame
                 self._connected = False
-                reason = ""
-                if length >= 2:
-                    code_bytes = self._recv_exact(2)
-                    code = _struct.unpack("!H", code_bytes)[0]
-                    if length > 2:
-                        reason = self._recv_exact(length - 2).decode("utf-8", errors="replace")
-                    log_warn(f"[Deriv WS] Server closed connection: code={code} reason={reason}")
-                else:
-                    log_warn(f"[Deriv WS] Server closed connection (no reason given)")
                 return None
             if opcode == 9:   # ping
                 self._send_pong()
@@ -5705,18 +5694,34 @@ class DerivWSClient:
                 length = _struct.unpack("!Q", self._recv_exact(8))[0]
 
             payload = self._recv_exact(length)
-            return payload.decode("utf-8") if payload else None
+            decoded_payload = payload.decode("utf-8") if payload else None
+            
+            # --- ADDED ROUTING LOGIC ---
+            if decoded_payload:
+                try:
+                    data = json.loads(decoded_payload)
+                    req_id = data.get("req_id")
+                    
+                    # If this frame has a req_id we are waiting for, trigger the event
+                    if req_id and req_id in self._pending_events:
+                        self._frame_queue[req_id] = data
+                        self._pending_events[req_id].set() 
+                except Exception:
+                    pass
+            # ---------------------------
+            
+            return decoded_payload
 
         except _socket.timeout:
             return None
         except ConnectionError:
             self._connected = False
-            raise   # let send_recv handle it, don't swallow
+            raise
         except Exception as e:
             log_error(f"[Deriv WS] recv error: {e}")
             self._connected = False
             return None
-
+            
     def _recv_exact(self, n: int) -> bytes:
         """Receive exactly n bytes. Raises ConnectionError if connection closes early."""
         buf = b""
