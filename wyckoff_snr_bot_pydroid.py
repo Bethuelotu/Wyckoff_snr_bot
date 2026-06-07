@@ -5766,57 +5766,34 @@ class DerivWSClient:
         except Exception:
             return None
 
-    def send_recv(self, payload: Dict, timeout: float = 10.0) -> Optional[Dict]:
-        """Send and wait for matching response (by req_id)."""
+    def send_recv(self, payload: Dict, timeout: float = 15.0) -> Optional[Dict]:
+        """Send and wait for matching response (by req_id) using thread events."""
         req_id = payload.get("req_id", 1)
         
-        # 1. ALWAYS check if the frame is already in the queue before sending or blocking
+        # Check if it already arrived
         if req_id in self._frame_queue:
             return self._frame_queue.pop(req_id)
             
+        # Create an event flag for this specific request
+        event = _dthread.Event()
+        self._pending_events[req_id] = event
+        
         if not self.send(payload):
+            self._pending_events.pop(req_id, None)
             return None
             
-        deadline = time.time() + timeout
-        last_ping = time.time()
+        # Wait for _recv_frame to set the event flag
+        event_triggered = event.wait(timeout)
         
-        while time.time() < deadline:
-            # Check the queue at the top of every internal loop iteration 
-            # in case a background thread just stuffed it in there.
-            if req_id in self._frame_queue:
-                return self._frame_queue.pop(req_id)
-                
-            if time.time() - last_ping >= 20:
-                self.send({"ping": 1})
-                last_ping = time.time()
-                
-            if not self._connected:
-                log_warn("[Deriv WS] Connection lost during recv loop")
-                return None
-                
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-                
-            raw = self._recv_frame(hard_timeout=min(remaining, 2.0))
-            if raw is None:
-                continue
-                
-            try:
-                resp = json.loads(raw)
-            except Exception:
-                continue
-                
-            resp_req_id = resp.get("req_id")
+        # Cleanup the event mapping
+        self._pending_events.pop(req_id, None)
+        
+        if event_triggered and req_id in self._frame_queue:
+            return self._frame_queue.pop(req_id)
             
-            if resp_req_id == req_id:
-                return resp
-            else:
-                # Safely buffer frames meant for other layers
-                self._frame_queue[resp_req_id] = resp
-                
-        log_warn(f"[Deriv WS] send_recv timeout after {timeout}s")
+        log_warn(f"[Deriv WS] send_recv timeout after {timeout}s for req_id {req_id}")
         return None
+
 
 
     @property
