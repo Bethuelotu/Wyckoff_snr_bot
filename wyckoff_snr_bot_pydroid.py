@@ -5989,7 +5989,7 @@ class DerivBroker(BrokerBase):
         else:
             log_info(f"[Deriv Push] Unhandled msg_type={msg_type}")
             
-    def _ensure_connected(self) -> bool:
+def _ensure_connected(self) -> bool:
     """
     New OTP flow:
     1. GET /accounts  → find demo or real account ID
