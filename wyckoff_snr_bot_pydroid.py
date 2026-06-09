@@ -5989,27 +5989,27 @@ class DerivBroker(BrokerBase):
         else:
             log_info(f"[Deriv Push] Unhandled msg_type={msg_type}")
             
-def _ensure_connected(self) -> bool:
-    """
-    New OTP flow:
-    1. GET /accounts  → find demo or real account ID
-    2. POST /accounts/{id}/otp → get WebSocket URL
-    3. Connect WebSocket to that URL (no further auth needed)
-    Auto-reconnects if the server closed the connection.
-    """
-    if self._ws and self._ws.connected and self._authed:
-        return True
-    if not self._token or not self._app_id:
-        return False
-    # Clean up stale client before reconnecting
-    if self._ws:
-        log_info("[Deriv] Stale connection detected — reconnecting...")
-        try:
-            self._ws.disconnect()
-        except Exception:
-            pass
-        self._ws    = None
-        self._authed = False
+    def _ensure_connected(self) -> bool:
+        """
+        New OTP flow:
+        1. GET /accounts  → find demo or real account ID
+        2. POST /accounts/{id}/otp → get WebSocket URL
+        3. Connect WebSocket to that URL (no further auth needed)
+        Auto-reconnects if the server closed the connection.
+        """
+        if self._ws and self._ws.connected and self._authed:
+            return True
+        if not self._token or not self._app_id:
+            return False
+        # Clean up stale client before reconnecting
+        if self._ws:
+            log_info("[Deriv] Stale connection detected — reconnecting...")
+            try:
+                self._ws.disconnect()
+            except Exception:
+                pass
+            self._ws    = None
+            self._authed = False
         # Step 1: get account ID
         log_info("[Deriv] Fetching account list...")
         account_id = _deriv_get_account_id(
