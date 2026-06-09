@@ -5632,7 +5632,7 @@ class DerivWSClient:
             ctx = _ssl.create_default_context()
             raw = _socket.create_connection((host, 443), timeout=10)
             self._sock = ctx.wrap_socket(raw, server_hostname=host.split("?")[0])
-            self._sock.settimeout(5.0)   # reader thread uses blocking reads with 5 s timeout
+            self._sock.settimeout(30.0)   # reader thread uses blocking reads with 5 s timeout
 
             # WebSocket handshake
             key = _base64.b64encode(os.urandom(16)).decode()
@@ -5814,6 +5814,15 @@ class DerivWSClient:
             except _socket.timeout:
                 # Normal — keep looping
                 continue
+            except OSError as oe:
+                import errno as _errno
+                if oe.errno == _errno.EAGAIN or oe.errno == _errno.EWOULDBLOCK:
+                    # Socket temporarily unavailable — not fatal, just retry
+                    time.sleep(0.05)
+                    continue
+                log_warn(f"[Deriv WS] Reader lost connection: {oe}")
+                self._connected = False
+                break
             except ConnectionError as ce:
                 log_warn(f"[Deriv WS] Reader lost connection: {ce}")
                 self._connected = False
@@ -5822,7 +5831,7 @@ class DerivWSClient:
                 log_error(f"[Deriv WS] Reader error: {e}")
                 self._connected = False
                 break
-
+                
         log_info("[Deriv WS] Reader thread exited")
         # Wake any callers still waiting
         with self._router_lock:
