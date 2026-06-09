@@ -5461,11 +5461,19 @@ DERIV_CONFIG: Dict = {
     # Account building - scales with balance
     "stages": [
         # (min_balance, max_balance, stake, multiplier, max_trades)
-        # Forex Multipliers minimum is 50 (10/20 only valid for synthetics)
-        (0.00,   10.00,  1.00,  50,  2),
-        (10.00,  50.00,  1.00,  100, 3),
-        (50.00,  200.0,  2.00,  100, 4),
-        (200.0,  9999.,  5.00,  200, 5),
+        # Forex:    min x100, max x800
+        # Synthetic: min x40, max x400
+        (0.00,   10.00,  1.00, 100, 2),
+        (10.00,  50.00,  1.00, 100, 3),
+        (50.00,  200.0,  2.00, 200, 4),
+        (200.0,  9999.,  5.00, 400, 5),
+    ],
+    "stages_synthetic": [
+        # (min_balance, max_balance, stake, multiplier, max_trades)
+        (0.00,   10.00,  1.00,  40, 2),
+        (10.00,  50.00,  1.00, 100, 3),
+        (50.00,  200.0,  2.00, 200, 4),
+        (200.0,  9999.,  5.00, 400, 5),
     ],
 
     # Risk per trade
@@ -6377,10 +6385,15 @@ class DerivRiskManager:
             self._day_start  = current_balance
             self._day_loss   = 0.0
 
-    def current_stage(self, balance: Optional[float] = None) -> Dict:
-        """Return current risk stage based on balance."""
+    def current_stage(self, balance: Optional[float] = None,
+                      symbol: str = "") -> Dict:
+        """Return current risk stage based on balance and symbol type."""
         bal = balance or self._balance
-        for min_b, max_b, stake, mult, max_trades in DERIV_CONFIG["stages"]:
+        is_synthetic = any(x in symbol for x in (
+            "1HZ", "R_", "BOOM", "CRASH", "STEP", "RANGE", "VOLATILITY"
+        ))
+        stage_key = "stages_synthetic" if is_synthetic else "stages"
+        for min_b, max_b, stake, mult, max_trades in DERIV_CONFIG[stage_key]:
             if min_b <= bal < max_b:
                 return {
                     "stake":      stake,
@@ -6389,8 +6402,11 @@ class DerivRiskManager:
                     "min_balance": min_b,
                     "max_balance": max_b,
                 }
-        # Fallback - safest stage
-        return {"stake": 1.00, "multiplier": 50, "max_trades": 2,
+        # Fallback - safest stage per instrument type
+        if is_synthetic:
+            return {"stake": 1.00, "multiplier": 40, "max_trades": 2,
+                    "min_balance": 0, "max_balance": 10}
+        return {"stake": 1.00, "multiplier": 100, "max_trades": 2,
                 "min_balance": 0, "max_balance": 10}
 
     def can_trade(self, current_balance: float,
@@ -6402,7 +6418,7 @@ class DerivRiskManager:
         self._balance = current_balance
         self._reset_day_if_needed(current_balance)
 
-        stage = self.current_stage(current_balance)
+        stage = self.current_stage(current_balance, symbol=deriv_sym)
 
         # Daily loss limit
         day_loss = self._day_start - current_balance
@@ -6431,7 +6447,7 @@ class DerivRiskManager:
 
     def log_stage(self, balance: float) -> None:
         """Log current stage info."""
-        stage = self.current_stage(balance)
+        stage = self.current_stage(balance, symbol=deriv_sym)
         log_info(f"[DerivRisk] Balance=${balance:.2f} "
                  f"Stage: stake=${stage['stake']} "
                  f"x{stage['multiplier']} "
@@ -6635,7 +6651,7 @@ class MultiEntryManager:
                     break
 
             # Place trade
-            stage = self._risk.current_stage(balance)
+            stage = self._risk.current_stage(balance, symbol=deriv_sym)
             trade = self._broker.place_multiplier(
                 symbol     = signal.symbol,
                 direction  = signal.direction.value,
@@ -7259,7 +7275,7 @@ class AccountManager:
                            f"(limit=${daily_limit:.2f}). Resume tomorrow.")
 
         # Rule 3: Max exposure
-        stage           = self._risk.current_stage(balance)
+        stage           = self._risk.current_stage(balance, symbol=deriv_sym)
         stake_per_trade = stage["stake"]
         open_exposure   = len(open_positions) * stake_per_trade
         max_exposure    = balance * self.MAX_EXPOSURE_PCT
@@ -7305,7 +7321,7 @@ class AccountManager:
 
     def get_stage_info(self, balance: float) -> Dict:
         """Return current stage info for logging/webapp."""
-        stage = self._risk.current_stage(balance)
+        stage = self._risk.current_stage(balance, symbol=deriv_sym)
         return {
             "balance":      round(balance, 2),
             "stage_stake":  stage["stake"],
