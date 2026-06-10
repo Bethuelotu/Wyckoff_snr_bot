@@ -6221,26 +6221,32 @@ class DerivBroker(BrokerBase):
             # Step 1: Get proposal
             # subscribe:0 = one-shot (no streaming frames that block send_recv)
             # "symbol" is the correct field name for this API
-            proposal_payload = {
-                "proposal":        1,
-                "amount":          stake,
-                "basis":           "stake",
-                "contract_type":   contract_type,
-                "currency":        self._currency,
-                "multiplier":      multiplier,
-                "underlying_symbol": deriv_sym,
-                # limit_order temporarily removed for testing
-                # "limit_order": {
-                #     "stop_loss":   sl_usd,
-                #     "take_profit": tp_usd,
-                # },
-                "req_id": self._next_id(),
-            }
             # Verify connection still alive before proposal
             ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
-            log_info(f"[Deriv] Pre-proposal ping: {ping_resp}")
-            ws_url = self._ws._url if hasattr(self._ws, '_url') else 'unknown'
-            log_info(f"[Deriv] Sending proposal via: {ws_url}")
+            if not ping_resp:
+                log_warn("[Deriv] Pre-proposal ping failed — reconnecting")
+                self._authed = False
+                self._ws     = None
+                if not self._ensure_connected():
+                    return None
+            else:
+                log_info(f"[Deriv] Pre-proposal ping ok")
+
+            # Build proposal AFTER ping so req_id is fresh
+            proposal_payload = {
+                "proposal":          1,
+                "amount":            stake,
+                "basis":             "stake",
+                "contract_type":     contract_type,
+                "currency":          self._currency,
+                "multiplier":        multiplier,
+                "underlying_symbol": deriv_sym,
+                "limit_order": {
+                    "stop_loss":   sl_usd,
+                    "take_profit": tp_usd,
+                },
+                "req_id": self._next_id(),
+            }
             log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
             prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
             # Unsubscribe immediately after getting first proposal response
