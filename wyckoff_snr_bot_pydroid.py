@@ -6228,17 +6228,21 @@ class DerivBroker(BrokerBase):
             # subscribe:0 = one-shot (no streaming frames that block send_recv)
             # "symbol" is the correct field name for this API
             # Verify connection still alive before proposal
+            import time as _time
+            t0 = _time.time()
             ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
+            t1 = _time.time()
             if not ping_resp:
-                log_warn("[Deriv] Pre-proposal ping failed — reconnecting")
+                log_warn(f"[Deriv] Pre-proposal ping FAILED after {t1-t0:.2f}s — reconnecting")
                 self._authed = False
                 self._ws     = None
                 if not self._ensure_connected():
                     return None
             else:
-                log_info(f"[Deriv] Pre-proposal ping ok")
+                log_info(f"[Deriv] Pre-proposal ping ok in {t1-t0:.2f}s")
 
             # Build proposal AFTER ping so req_id is fresh
+            t2 = _time.time()
             proposal_payload = {
                 "proposal":          1,
                 "amount":            stake,
@@ -6250,7 +6254,11 @@ class DerivBroker(BrokerBase):
                 "req_id": self._next_id(),
             }
             log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
+            t3 = _time.time()
+            log_info(f"[Deriv] Time since ping ok to proposal send: {t3-t2:.2f}s")
             prop_resp = self._ws.send_recv(proposal_payload, timeout=60)
+            t4 = _time.time()
+            log_info(f"[Deriv] Proposal wait ended after {t4-t3:.2f}s result={'ok' if prop_resp else 'none'}")
             # Unsubscribe immediately after getting first proposal response
             if prop_resp and "proposal" in prop_resp:
                 sub_id = prop_resp.get("subscription", {}).get("id")
