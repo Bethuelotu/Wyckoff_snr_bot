@@ -5681,7 +5681,7 @@ class DerivWSClient:
 
     def disconnect(self):
         """Stop the reader thread and close the socket."""
-        self._stop_reader = False
+        self._stop_reader = True
         self._connected   = False
         try:
             if self._sock:
@@ -5720,12 +5720,16 @@ class DerivWSClient:
     def _recv_exact(self, n: int) -> bytes:
         buf = b""
         while len(buf) < n:
-            chunk = self._sock.recv(n - len(buf))
+            try:
+                chunk = self._sock.recv(n - len(buf))
+            except _socket.timeout:
+                # Retry — do not raise, keep accumulating
+                continue
             if not chunk:
                 raise ConnectionError("[Deriv WS] Connection closed mid-read")
             buf += chunk
         return buf
-
+        
     def _read_one_frame(self) -> Optional[str]:
         """
         Read one complete WebSocket frame from the socket.
@@ -5794,8 +5798,10 @@ class DerivWSClient:
                 req_id   = msg.get("req_id")
                 msg_type = msg.get("msg_type", "")
 
-                log_info(f"[Deriv WS] Frame in: req_id={req_id} "
-                         f"msg_type={msg_type} keys={list(msg.keys())}")
+                if msg_type not in ("tick", "ohlc", "candles",
+                                    "proposal", "proposal_open_contract"):
+                    log_info(f"[Deriv WS] Frame in: req_id={req_id} "
+                             f"msg_type={msg_type} keys={list(msg.keys())}")
 
                 # Route to waiting caller if req_id matches a pending slot
                 routed = False
