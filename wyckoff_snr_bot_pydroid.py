@@ -6249,9 +6249,12 @@ class DerivBroker(BrokerBase):
                 "basis":             "stake",
                 "contract_type":     contract_type,
                 "currency":          self._currency,
+                "duration":          5,
+                "duration_unit":     "t",
                 "multiplier":        multiplier,
                 "underlying_symbol": deriv_sym,
-                "req_id": self._next_id(),
+                "subscribe":         1,
+                "req_id":            self._next_id(),
             }
             log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
             t3 = _time.time()
