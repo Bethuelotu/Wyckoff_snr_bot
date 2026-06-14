@@ -5963,7 +5963,7 @@ class DerivBroker(BrokerBase):
         self._currency  = "USD"
         self._lock      = _dthread.Lock()
         self._place_lock = _dthread.Lock()
-        self._req_id    = 1
+        self._req_id    = 10  # start at 10 — low IDs reserved for subscriptions
         self._positions: Dict[str, Dict] = {}
 
         if not self._token:
@@ -6067,7 +6067,7 @@ class DerivBroker(BrokerBase):
         try:
             resp = self._ws.send_recv({
                 "balance": 1,
-                "req_id":  self._next_id(),
+                "req_id":  1,
             }, timeout=8)
             if resp and "balance" in resp:
                 self._balance  = float(resp["balance"].get("balance", 0))
@@ -6247,10 +6247,6 @@ class DerivBroker(BrokerBase):
                 "currency":          self._currency,
                 "multiplier":        multiplier,
                 "underlying_symbol": deriv_sym,
-                "limit_order": {
-                    "stop_loss":   sl_usd,
-                    "take_profit": tp_usd,
-                },
                 "req_id": self._next_id(),
             }
             log_info(f"[Deriv] Sending proposal: {json.dumps(proposal_payload)}")
@@ -6299,8 +6295,22 @@ class DerivBroker(BrokerBase):
                           f"stake=${stake} x{multiplier} "
                           f"SL=${sl_usd} TP=${tp_usd} "
                           f"id={contract_id}")
+                # Set SL/TP after trade opens via contract_update
+                try:
+                    self._ws.send_recv({
+                        "contract_update": 1,
+                        "contract_id":     int(contract_id),
+                        "limit_order": {
+                            "stop_loss":   {"order_type": "stop_loss",   "order_amount": sl_usd},
+                            "take_profit": {"order_type": "take_profit", "order_amount": tp_usd},
+                        },
+                        "req_id": self._next_id(),
+                    }, timeout=10)
+                    log_info(f"[Deriv] SL/TP set for {contract_id}")
+                except Exception as _ue:
+                    log_warn(f"[Deriv] Could not set SL/TP: {_ue}")
                 return self._positions[contract_id]
-
+                
             # Trade failed - log the reason
             err_resp = resp.get("error", {}) if resp else {}
             err = err_resp.get("message", "timeout")
