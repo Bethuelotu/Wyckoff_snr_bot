@@ -6066,6 +6066,7 @@ class DerivBroker(BrokerBase):
         try:
             resp = self._ws.send_recv({
                 "balance": 1,
+                "subscribe": 0,
                 "req_id":  1,
             }, timeout=8)
             if resp and "balance" in resp:
@@ -7307,7 +7308,7 @@ class AccountManager:
                            f"(limit=${daily_limit:.2f}). Resume tomorrow.")
 
         # Rule 3: Max exposure
-        stage           = self._risk.current_stage(balance, symbol=deriv_sym)
+        stage           = self._risk.current_stage(balance, symbol=symbol)
         stake_per_trade = stage["stake"]
         open_exposure   = len(open_positions) * stake_per_trade
         max_exposure    = balance * self.MAX_EXPOSURE_PCT
@@ -7351,9 +7352,9 @@ class AccountManager:
         """Call when a trade is opened."""
         self._last_trade_time[symbol] = time.time()
 
-    def get_stage_info(self, balance: float) -> Dict:
+    def get_stage_info(self, balance: float, symbol: str = "") -> Dict:
         """Return current stage info for logging/webapp."""
-        stage = self._risk.current_stage(balance, symbol=deriv_sym)
+        stage = self._risk.current_stage(balance, symbol=symbol)
         return {
             "balance":      round(balance, 2),
             "stage_stake":  stage["stake"],
