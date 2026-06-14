@@ -5798,10 +5798,9 @@ class DerivWSClient:
                 req_id   = msg.get("req_id")
                 msg_type = msg.get("msg_type", "")
 
-                if msg_type not in ("tick", "ohlc", "candles",
-                                    "proposal", "proposal_open_contract"):
-                    log_info(f"[Deriv WS] Frame in: req_id={req_id} "
-                             f"msg_type={msg_type} keys={list(msg.keys())}")
+            
+                log_info(f"[Deriv WS] Frame in: req_id={req_id} "
+                        f"msg_type={msg_type} keys={list(msg.keys())}")
 
                 # Route to waiting caller if req_id matches a pending slot
                 routed = False
