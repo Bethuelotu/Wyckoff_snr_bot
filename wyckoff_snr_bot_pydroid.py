@@ -6850,7 +6850,7 @@ def run_deriv_scan(signals: List["Signal"]) -> None:
     deriv_signals = [
         s for s in signals
         if s.symbol in safe_syms and
-           (s.symbol in DERIV_FOREX_MAP or s.symbol in DERIV_SYNTHETIC_MAP)
+            s.symbol in DERIV_SYNTHETIC_MAP
     ]
 
     if not deriv_signals:
