@@ -6218,11 +6218,10 @@ class DerivBroker(BrokerBase):
             deriv_sym  = (DERIV_FOREX_MAP.get(symbol)
                           or DERIV_SYNTHETIC_MAP.get(symbol)
                           or symbol)
-            # ADD THIS:
-            if symbol not in DERIV_SYNTHETIC_MAP:
-                log_info(f"[Deriv] Skipping non-synthetic symbol: {symbol}")
+            # CHANGE TO THIS:
+            if deriv_sym not in DERIV_SYNTHETIC_MAP.values():
+                log_info(f"[Deriv] Skipping non-synthetic symbol: {deriv_sym}")
                 return None
-
             # Get risk params from manager if not provided
             rm         = DerivRiskManager(self._balance)
             stage      = rm.current_stage()
