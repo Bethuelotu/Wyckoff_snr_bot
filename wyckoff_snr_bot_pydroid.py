@@ -5814,6 +5814,8 @@ class DerivWSClient:
 
                 # Push frame (tick stream, proposal_open_contract, etc.)
                 if not routed:
+                    log_info(f"[Deriv WS] Unrouted frame going to callback: "
+                        f"req_id={req_id} msg_type={msg_type}")
                     if self._push_callback:
                         try:
                             self._push_callback(msg)
@@ -5985,6 +5987,7 @@ class DerivBroker(BrokerBase):
         Updates _positions in-place so DerivTradeWatcher always sees fresh PnL.
         """
         msg_type = msg.get("msg_type", "")
+        log_info(f"[Deriv Push] Frame reached callback: msg_type={msg_type} req_id={msg.get('req_id')} keys={list(msg.keys())}")
 
         # Live contract update (sent continuously while a multiplier is open)
         if msg_type == "proposal_open_contract":
