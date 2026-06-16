@@ -4804,7 +4804,7 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
                                          f"< min={CONFIG.get('combined_min',9)} - skip")
                                 continue
 
-                            deriv_sym = _d_maps[0].get(sym) or _d_maps[1].get(sym)
+                            deriv_sym = _d_maps[1].get(sym)
                             if not deriv_sym:
                                 log_info(f"[Deriv] {sym} not in Deriv maps - skip")
                                 continue
@@ -6215,8 +6215,8 @@ class DerivBroker(BrokerBase):
                 log_error("[Deriv] Cannot place order - not connected")
                 self._place_lock.release()
                 return None
-            deriv_sym  = (DERIV_FOREX_MAP.get(symbol)
-                          or DERIV_SYNTHETIC_MAP.get(symbol)
+            deriv_sym  = (DERIV_SYNTHETIC_MAP.get(symbol)
+                          or DERIV_FOREX_MAP.get(symbol)
                           or symbol)
             # CHANGE TO THIS:
             if deriv_sym not in DERIV_SYNTHETIC_MAP.values():
