@@ -6099,7 +6099,8 @@ class DerivBroker(BrokerBase):
 
     def get_tick(self, symbol: str) -> Optional[Dict]:
         """
-        Get current bid/ask for a symbol.
+        Get current bid/ask for a symbol — one-shot, no subscription.
+        Uses ticks_history with count=1 to avoid leaking streaming subscriptions.
         symbol: bot internal format (e.g. EUR_USD, VOLATILITY_10)
         """
         if not self._ensure_connected():
@@ -6108,21 +6109,25 @@ class DerivBroker(BrokerBase):
                      or DERIV_SYNTHETIC_MAP.get(symbol)
                      or symbol)
         resp = self._ws.send_recv({
-            "ticks": deriv_sym,
-            "req_id": self._next_id(),
+            "ticks_history": deriv_sym,
+            "style":         "ticks",
+            "count":         1,
+            "end":           "latest",
+            "req_id":        self._next_id(),
         }, timeout=8)
-        if resp and "tick" in resp:
-            tick = resp["tick"]
-            mid  = float(tick.get("quote", 0))
-            # Deriv ticks give mid price; estimate bid/ask from spread
-            spread = 0.00010   # default 1 pip
-            return {
-                "bid":    round(mid - spread / 2, 5),
-                "ask":    round(mid + spread / 2, 5),
-                "mid":    mid,
-                "symbol": symbol,
-                "time":   tick.get("epoch", int(time.time())),
-            }
+        if resp and "history" in resp:
+            prices = resp["history"].get("prices", [])
+            times  = resp["history"].get("times",  [])
+            if prices:
+                mid    = float(prices[-1])
+                spread = 0.00010
+                return {
+                    "bid":    round(mid - spread / 2, 5),
+                    "ask":    round(mid + spread / 2, 5),
+                    "mid":    mid,
+                    "symbol": symbol,
+                    "time":   times[-1] if times else int(time.time()),
+                }
         return None
 
     def get_candles(self, symbol: str, timeframe: str,
@@ -6230,6 +6235,18 @@ class DerivBroker(BrokerBase):
             # Verify connection still alive before proposal
             import time as _time
             t0 = _time.time()
+            # Cancel all active tick subscriptions before proposal
+            # Too many subscriptions causes Deriv to silently drop proposals
+            try:
+                self._ws.send_recv({
+                    "forget_all": "ticks",
+                    "req_id":     self._next_id(),
+                }, timeout=5)
+                log_info("[Deriv] Cleared tick subscriptions before proposal")
+            except Exception:
+                pass
+
+            # Ping FIRST to verify connection, THEN build proposal with fresh req_id
             ping_resp = self._ws.send_recv({"ping": 1, "req_id": self._next_id()}, timeout=10)
             t1 = _time.time()
             if not ping_resp:
