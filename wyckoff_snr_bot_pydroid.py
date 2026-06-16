@@ -5194,7 +5194,7 @@ def run_session_bot_loop() -> None:
                             if score < CONFIG.get("combined_min", 7):
                                 log_info(f"[Deriv] {sym} score={score:.0f} too low - skip")
                                 continue
-                            deriv_sym = _d_maps[0].get(sym) or _d_maps[1].get(sym)
+                            deriv_sym = _d_maps[1].get(sym)
                             if not deriv_sym:
                                 log_info(f"[Deriv] {sym} not in Deriv maps - skip")
                                 continue
