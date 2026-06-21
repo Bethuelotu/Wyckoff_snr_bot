@@ -5581,6 +5581,9 @@ class DerivWSClient:
         # Reader thread
         self._reader_thread: Optional[_dthread.Thread] = None
         self._stop_reader   = False
+        
+        self._stop_keepalive = False
+        self._keepalive_thread: Optional[_dthread.Thread] = None
 
     # ── Connection ───────────────────────────────────────────────────
 
@@ -5630,6 +5633,8 @@ class DerivWSClient:
                 target=self._reader_loop, daemon=True, name="DerivWSReader"
             )
             self._reader_thread.start()
+            self._keepalive_thread = _dthread.Thread(target=self._keepalive_loop, daemon=True)
+            self._keepalive_thread.start()
             log_info("[Deriv WS] Connected — router thread started")
             return True
 
@@ -5813,6 +5818,22 @@ class DerivWSClient:
             for slot in self._pending.values():
                 slot["event"].set()
             self._pending.clear()
+            
+    def _keepalive_loop(self):
+    """
+    Sends a lightweight ping every 15s while the connection is idle,
+    to prevent Deriv / intermediate proxies from closing the socket
+    due to inactivity between scan cycles.
+    """
+    while self._connected and not self._stop_reader:
+        time.sleep(15)
+        if not self._connected or self._stop_reader:
+            break
+        try:
+            self.send({"ping": 1, "req_id": self._next_id()})
+        except Exception as e:
+            log_warn(f"[Deriv WS] Keepalive ping failed: {e}")
+            break
 
     # ── Public API ───────────────────────────────────────────────────
 
