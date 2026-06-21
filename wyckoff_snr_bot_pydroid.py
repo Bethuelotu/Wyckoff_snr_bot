@@ -5830,7 +5830,7 @@ class DerivWSClient:
             if not self._connected or self._stop_reader:
                 break
             try:
-                self.send({"ping": 1, "req_id": self._next_id()})
+                self.send({"ping": 1, "req_id": int(time.time() * 1000) % 1000000})
             except Exception as e:
                 log_warn(f"[Deriv WS] Keepalive ping failed: {e}")
                 break
