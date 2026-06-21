@@ -4987,8 +4987,7 @@ def run_session_bot_loop() -> None:
         log_info(f"[Deriv] Token found in loop (len={len(_dt)}) app_id={_da}")
     else:
         log_warn("[Deriv] DERIV_API_TOKEN not found in environment - Deriv disabled")
-    signal_broker = YFinanceBroker()   # always-on broker for signal scanning
-
+    signal_broker = YFinanceMT5Broker()   # always-on broker for signal scanning (synthetics route to Deriv internally)
     all_signals: List[Dict] = _load_json(CONFIG["signals_file"], [])
     scan_count = 0
     
@@ -6435,7 +6434,7 @@ class DerivRiskManager:
         self._balance = current_balance
         self._reset_day_if_needed(current_balance)
 
-        stage = self.current_stage(current_balance, symbol=deriv_sym)
+        stage = self.current_stage(current_balance)
 
         # Daily loss limit
         day_loss = self._day_start - current_balance
@@ -6464,7 +6463,7 @@ class DerivRiskManager:
 
     def log_stage(self, balance: float) -> None:
         """Log current stage info."""
-        stage = self.current_stage(balance, symbol=deriv_sym)
+        stage = self.current_stage(balance)
         log_info(f"[DerivRisk] Balance=${balance:.2f} "
                  f"Stage: stake=${stage['stake']} "
                  f"x{stage['multiplier']} "
