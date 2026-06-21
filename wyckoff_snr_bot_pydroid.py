@@ -5042,6 +5042,12 @@ def run_session_bot_loop() -> None:
                         log_info("[SESSION] Session ended mid-scan - stopping cycle.")
                         break
 
+                # ── Market hours gate ─────────────────────────────────
+                if not should_scan_symbol(symbol):
+                    log_info(f"  [{symbol}] Market CLOSED (weekend/off-hours) - skipping")
+                    continue
+                # ─────────────────────────────────────────────────────
+
                 log_info(f"[SESSION] Scanning {symbol}...")
                 try:
                     df_w  = broker.get_candles(symbol, CONFIG["tf_weekly"],  50)
@@ -6140,6 +6146,11 @@ class DerivBroker(BrokerBase):
             err = (resp.get("error", {}).get("message", "no candles")
                    if resp else "timeout")
             log_warn(f"[Deriv] get_candles {symbol} {timeframe}: {err}")
+            return None
+
+        if not resp["candles"]:
+            log_warn(f"[Deriv] get_candles {symbol} {timeframe}: "
+                      f"empty candle list (thin/no market data right now)")
             return None
 
         rows = []
