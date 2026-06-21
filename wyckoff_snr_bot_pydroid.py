@@ -6699,7 +6699,7 @@ class MultiEntryManager:
                     break
 
             # Place trade
-            stage = self._risk.current_stage(balance, symbol=deriv_sym)
+            stage = self._risk.current_stage(balance, symbol=signal.symbol)
             trade = self._broker.place_multiplier(
                 symbol     = signal.symbol,
                 direction  = signal.direction.value,
