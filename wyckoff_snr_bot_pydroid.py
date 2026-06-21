@@ -5820,20 +5820,20 @@ class DerivWSClient:
             self._pending.clear()
             
     def _keepalive_loop(self):
-    """
-    Sends a lightweight ping every 15s while the connection is idle,
-    to prevent Deriv / intermediate proxies from closing the socket
-    due to inactivity between scan cycles.
-    """
-    while self._connected and not self._stop_reader:
-        time.sleep(15)
-        if not self._connected or self._stop_reader:
-            break
-        try:
-            self.send({"ping": 1, "req_id": self._next_id()})
-        except Exception as e:
-            log_warn(f"[Deriv WS] Keepalive ping failed: {e}")
-            break
+        """
+        Sends a lightweight ping every 15s while the connection is idle,
+        to prevent Deriv / intermediate proxies from closing the socket
+        due to inactivity between scan cycles.
+        """
+        while self._connected and not self._stop_reader:
+            time.sleep(15)
+            if not self._connected or self._stop_reader:
+                break
+            try:
+                self.send({"ping": 1, "req_id": self._next_id()})
+            except Exception as e:
+                log_warn(f"[Deriv WS] Keepalive ping failed: {e}")
+                break
 
     # ── Public API ───────────────────────────────────────────────────
 
