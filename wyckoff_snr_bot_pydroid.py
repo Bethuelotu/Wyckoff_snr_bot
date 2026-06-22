@@ -5994,10 +5994,13 @@ class DerivBroker(BrokerBase):
         elif msg_type == "tick":
             pass
 
-        # Proposal stream — handled by send_recv, suppress log noise
+        # Proposal stream — if it reaches here, req_id didn't match the router
+        # slot. Log it fully so we can see what req_id Deriv actually sent back.
         elif msg_type == "proposal":
-            pass
-
+            log_info(f"[Deriv Push] UNROUTED proposal frame — "
+                     f"req_id={msg.get('req_id')} "
+                     f"keys={list(msg.keys())} "
+                     f"proposal_id={msg.get('proposal', {}).get('id')}")
         else:
             log_info(f"[Deriv Push] Unhandled msg_type={msg_type}")
             
@@ -6255,6 +6258,23 @@ class DerivBroker(BrokerBase):
                     return None
             else:
                 log_info(f"[Deriv] Pre-proposal ping ok in {t1-t0:.2f}s")
+
+            # Verify MULTUP/MULTDOWN is available for this symbol
+            cf_resp = self._ws.send_recv({
+                "contracts_for": deriv_sym,
+                "currency":      self._currency,
+                "req_id":        self._next_id(),
+            }, timeout=10)
+            if cf_resp and "contracts_for" in cf_resp:
+                available = [c.get("contract_type") for c in
+                             cf_resp["contracts_for"].get("available", [])]
+                log_info(f"[Deriv] contracts_for {deriv_sym}: {available}")
+                if contract_type not in available:
+                    log_warn(f"[Deriv] {contract_type} not available for "
+                             f"{deriv_sym} — skipping proposal")
+                    return None
+            else:
+                log_warn(f"[Deriv] contracts_for {deriv_sym} failed — proceeding anyway")
 
             # Build proposal AFTER ping so req_id is fresh
             t2 = _time.time()
