@@ -4826,7 +4826,7 @@ def run_main_loop_with_push(broker: BrokerBase) -> None:
                                          f"< min={CONFIG.get('combined_min',9)} - skip")
                                 continue
 
-                            deriv_sym = _d_maps[1].get(sym)
+                            deriv_sym = _d_maps[0].get(sym) or _d_maps[1].get(sym)
                             if not deriv_sym:
                                 log_info(f"[Deriv] {sym} not in Deriv maps - skip")
                                 continue
