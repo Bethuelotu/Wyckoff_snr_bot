@@ -5145,8 +5145,13 @@ def run_session_bot_loop() -> None:
                                 tg_notify_signal_detail(signal)
                             
                         if not SESSION_ACTIVE:
-                            # Signal-only mode - no trade execution
-                            log_info(f"  [{symbol}] SIGNAL_ONLY - pushed to webapp, no trade placed.")
+                            # MT5 session not active - but still hand off to
+                            # Deriv worker if token is configured
+                            if os.environ.get("DERIV_API_TOKEN", ""):
+                                log_info(f"  [{symbol}] No MT5 session - handing off to Deriv worker")
+                                DERIV_SIGNAL_QUEUE.put(signal)
+                            else:
+                                log_info(f"  [{symbol}] SIGNAL_ONLY - pushed to webapp, no trade placed.")
                         elif not can_trade:
                             log_info(f"  [{symbol}] Max trades reached - queued.")
                         elif not conf["valid"]:
