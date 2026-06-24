@@ -5324,6 +5324,48 @@ if FLASK_OK:
             "balance":    balance,
         }), 200
 
+    @app.route("/test-proposal", methods=["GET"])
+    def test_proposal():
+        """TEMPORARY: Fire a raw proposal to test WS response. Remove after testing."""
+        try:
+            broker = _get_deriv_broker()
+            if not broker:
+                return jsonify({"error": "Deriv broker not ready"}), 500
+
+            # Fire a minimal MULTUP proposal directly, bypassing all gates
+            deriv_sym = "1HZ10V"   # VOLATILITY_10 - most liquid synthetic
+            contract_type = "MULTUP"
+            req_id = broker._next_id()
+
+            proposal_payload = {
+                "proposal":          1,
+                "amount":            1.0,
+                "basis":             "stake",
+                "contract_type":     contract_type,
+                "currency":          broker._currency,
+                "duration":          5,
+                "duration_unit":     "t",
+                "multiplier":        40,
+                "underlying_symbol": deriv_sym,
+                "subscribe":         0,
+                "req_id":            req_id,
+            }
+
+            log_info(f"[TEST] Sending test proposal: {json.dumps(proposal_payload)}")
+            t0 = _time.time()
+            resp = broker._ws.send_recv(proposal_payload, timeout=15)
+            elapsed = _time.time() - t0
+            log_info(f"[TEST] Proposal response after {elapsed:.2f}s: {resp}")
+
+            return jsonify({
+                "elapsed":  round(elapsed, 2),
+                "response": resp,
+            }), 200
+
+        except Exception as e:
+            log_error(f"[TEST] Proposal test error: {e}")
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/stop-session", methods=["POST"])
     def stop_session():
         global SESSION_ACTIVE
