@@ -5326,52 +5326,139 @@ if FLASK_OK:
 
     @app.route("/test-proposal", methods=["GET"])
     def test_proposal():
-        """TEMPORARY: Fire a raw proposal to test WS response. Remove after testing."""
+        """TEMPORARY: Opens a fresh independent OTP connection to test proposal."""
         try:
-            broker = _get_deriv_broker()
-            if not broker:
-                return jsonify({"error": "Deriv broker not ready"}), 500
+            import os, json as _j, time as _t, ssl as _ssl2
+            import socket as _sock2, base64 as _b64, struct as _st
+            import urllib.request as _ureq
 
-            # Fire a minimal MULTUP proposal directly, bypassing all gates
-            deriv_sym = "1HZ10V"   # VOLATILITY_10 - most liquid synthetic
-            contract_type = "MULTUP"
-            req_id = broker._next_id()
+            token   = os.environ.get("DERIV_API_TOKEN", "")
+            app_id  = os.environ.get("DERIV_APP_ID", "1089")
+            demo    = os.environ.get("DERIV_DEMO", "1") == "1"
+            mode    = "demo" if demo else "real"
 
-            proposal_payload = {
-                "proposal":          1,
-                "amount":            1.0,
-                "basis":             "stake",
-                "contract_type":     contract_type,
-                "currency":          broker._currency,
-                "duration":          5,
-                "duration_unit":     "t",
-                "multiplier":        40,
-                "underlying_symbol": deriv_sym,
-                "subscribe":         0,
-                "req_id":            req_id,
+            if not token:
+                return jsonify({"error": "No DERIV_API_TOKEN"}), 500
+
+            # ── Step 1: Get account list ──────────────────────────────
+            base = "https://api.derivws.com/trading/v1/options"
+            req = _ureq.Request(
+                f"{base}/accounts",
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"},
+            )
+            with _ureq.urlopen(req, timeout=10) as r:
+                accounts = _j.loads(r.read())
+            log_info(f"[TEST2] accounts: {accounts}")
+
+            demo_accs = [a for a in accounts.get("accounts", [])
+                         if a.get("account_type") == "demo"]
+            if not demo_accs:
+                return jsonify({"error": "No demo account found"}), 500
+            account_id = demo_accs[0]["account_id"]
+            log_info(f"[TEST2] Using account: {account_id}")
+
+            # ── Step 2: Fetch OTP ─────────────────────────────────────
+            otp_req = _ureq.Request(
+                f"{base}/accounts/{account_id}/otp",
+                data=b"{}",
+                method="POST",
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"},
+            )
+            with _ureq.urlopen(otp_req, timeout=10) as r:
+                otp_data = _j.loads(r.read())
+            ws_url = otp_data.get("url", "")
+            log_info(f"[TEST2] OTP WS URL len={len(ws_url)}")
+            if not ws_url:
+                return jsonify({"error": "No OTP URL returned"}), 500
+
+            # ── Step 3: Connect to OTP WS ─────────────────────────────
+            # Parse wss://api.derivws.com/trading/v1/options/ws/demo?otp=...
+            from urllib.parse import urlparse
+            parsed = urlparse(ws_url)
+            host   = parsed.hostname
+            path   = parsed.path + ("?" + parsed.query if parsed.query else "")
+
+            ctx  = _ssl2.create_default_context()
+            raw  = _sock2.create_connection((host, 443), timeout=10)
+            sock = ctx.wrap_socket(raw, server_hostname=host)
+            sock.settimeout(15.0)
+
+            # WebSocket handshake
+            key = _b64.b64encode(os.urandom(16)).decode()
+            hs  = (f"GET {path} HTTP/1.1\r\n"
+                   f"Host: {host}\r\n"
+                   f"Upgrade: websocket\r\n"
+                   f"Connection: Upgrade\r\n"
+                   f"Sec-WebSocket-Key: {key}\r\n"
+                   f"Sec-WebSocket-Version: 13\r\n\r\n")
+            sock.sendall(hs.encode())
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                buf += sock.recv(1024)
+            log_info(f"[TEST2] WS handshake done")
+
+            def _send(s, msg):
+                d = msg.encode()
+                m = os.urandom(4)
+                n = len(d)
+                h = bytearray([0x81, 0x80 | n]) if n < 126 else \
+                    bytearray([0x81, 0xFE]) + bytearray(_st.pack(">H", n))
+                h += m
+                s.sendall(bytes(h) + bytes(b ^ m[i % 4]
+                                           for i, b in enumerate(d)))
+
+            def _recv(s):
+                hdr = b""
+                while len(hdr) < 2:
+                    hdr += s.recv(2 - len(hdr))
+                n = hdr[1] & 0x7F
+                if n == 126:
+                    ext = b""
+                    while len(ext) < 2:
+                        ext += s.recv(2 - len(ext))
+                    n = _st.unpack(">H", ext)[0]
+                pl = b""
+                while len(pl) < n:
+                    pl += s.recv(n - len(pl))
+                return pl.decode()
+
+            # ── Step 4: Send contracts_for ────────────────────────────
+            _send(sock, _j.dumps({"contracts_for": "1HZ10V",
+                                  "currency": "USD", "req_id": 1}))
+            cf = _j.loads(_recv(sock))
+            log_info(f"[TEST2] contracts_for msg_type={cf.get('msg_type')} "
+                     f"error={cf.get('error')} "
+                     f"count={len(cf.get('contracts_for',{}).get('available',[]))}")
+
+            # ── Step 5: Send proposal ─────────────────────────────────
+            proposal = {
+                "proposal": 1, "amount": 1.0, "basis": "stake",
+                "contract_type": "MULTUP", "currency": "USD",
+                "duration": 5, "duration_unit": "t",
+                "multiplier": 40, "underlying_symbol": "1HZ10V",
+                "subscribe": 0, "req_id": 2,
             }
+            log_info(f"[TEST2] Sending proposal: {_j.dumps(proposal)}")
+            t0 = _t.time()
+            _send(sock, _j.dumps(proposal))
+            pr = _j.loads(_recv(sock))
+            elapsed = _t.time() - t0
+            log_info(f"[TEST2] Proposal after {elapsed:.2f}s: {pr}")
+            sock.close()
 
-            with broker._place_lock:
-                cf = broker._ws.send_recv({
-                    "contracts_for": "1HZ10V",
-                    "currency":      "USD",
-                    "req_id":        broker._next_id(),
-                }, timeout=10)
-                log_info(f"[TEST] contracts_for response: {cf}")
-
-                log_info(f"[TEST] Sending test proposal: {json.dumps(proposal_payload)}")
-                t0 = time.time()
-                resp = broker._ws.send_recv(proposal_payload, timeout=15)
-                elapsed = time.time() - t0
-                log_info(f"[TEST] Response after {elapsed:.2f}s: {resp}")
-            
             return jsonify({
-                "elapsed":  round(elapsed, 2),
-                "response": resp,
+                "elapsed":       round(elapsed, 2),
+                "msg_type":      pr.get("msg_type"),
+                "error":         pr.get("error"),
+                "proposal":      pr.get("proposal"),
+                "contracts_for_count": len(cf.get("contracts_for", {})
+                                             .get("available", [])),
             }), 200
 
         except Exception as e:
-            log_error(f"[TEST] Proposal test error: {e}")
+            log_error(f"[TEST2] Error: {e}")
             return jsonify({"error": str(e)}), 500
 
     @app.route("/stop-session", methods=["POST"])
