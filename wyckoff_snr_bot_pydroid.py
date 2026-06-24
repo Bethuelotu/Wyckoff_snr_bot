@@ -5352,9 +5352,9 @@ if FLASK_OK:
             }
 
             log_info(f"[TEST] Sending test proposal: {json.dumps(proposal_payload)}")
-            t0 = _time.time()
+            t0 = time.time()
             resp = broker._ws.send_recv(proposal_payload, timeout=15)
-            elapsed = _time.time() - t0
+            elapsed = time.time() - t0
             log_info(f"[TEST] Proposal response after {elapsed:.2f}s: {resp}")
 
             return jsonify({
