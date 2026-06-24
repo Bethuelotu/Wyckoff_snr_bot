@@ -5351,7 +5351,15 @@ if FLASK_OK:
                 "req_id":            req_id,
             }
 
-            log_info(f"[TEST] Sending test proposal: {json.dumps(proposal_payload)}")
+            # Check contracts_for first
+            cf = broker._ws.send_recv({
+                "contracts_for": "1HZ10V",
+                "currency":      "USD",
+                "req_id":        broker._next_id(),
+            }, timeout=10)
+            log_info(f"[TEST] contracts_for response: {cf}")
+
+            log_info(f"[TEST] Sending test proposal: {_json.dumps(proposal_payload)}")
             t0 = time.time()
             resp = broker._ws.send_recv(proposal_payload, timeout=15)
             elapsed = time.time() - t0
