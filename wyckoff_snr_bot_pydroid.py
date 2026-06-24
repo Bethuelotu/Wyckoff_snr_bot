@@ -5359,7 +5359,7 @@ if FLASK_OK:
             }, timeout=10)
             log_info(f"[TEST] contracts_for response: {cf}")
 
-            log_info(f"[TEST] Sending test proposal: {_json.dumps(proposal_payload)}")
+            log_info(f"[TEST] Sending test proposal: {json.dumps(proposal_payload)}")
             t0 = time.time()
             resp = broker._ws.send_recv(proposal_payload, timeout=15)
             elapsed = time.time() - t0
