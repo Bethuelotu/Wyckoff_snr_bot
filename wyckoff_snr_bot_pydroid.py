@@ -5324,137 +5324,76 @@ if FLASK_OK:
             "balance":    balance,
         }), 200
 
+
     @app.route("/test-proposal", methods=["GET"])
     def test_proposal():
-        """TEMPORARY: Opens a fresh independent OTP connection to test proposal."""
+        """TEMPORARY: Fresh OTP connection to test proposal independently."""
         try:
-            import os, json as _j, time as _t, ssl as _ssl2
-            import socket as _sock2, base64 as _b64, struct as _st
-            import urllib.request as _ureq
-
-            token   = os.environ.get("DERIV_API_TOKEN", "")
-            app_id  = os.environ.get("DERIV_APP_ID", "1089")
-            demo    = os.environ.get("DERIV_DEMO", "1") == "1"
-            mode    = "demo" if demo else "real"
+            token  = os.environ.get("DERIV_API_TOKEN", "")
+            app_id = os.environ.get("DERIV_APP_ID", "1089")
+            demo   = os.environ.get("DERIV_DEMO", "1") == "1"
 
             if not token:
                 return jsonify({"error": "No DERIV_API_TOKEN"}), 500
 
-            # ── Step 1: Get account list ──────────────────────────────
-            base = "https://api.derivws.com/trading/v1/options"
-            req = _ureq.Request(
-                f"{base}/accounts",
-                headers={"Authorization": f"Bearer {token}",
-                         "Content-Type": "application/json"},
-            )
-            with _ureq.urlopen(req, timeout=10) as r:
-                accounts = _j.loads(r.read())
-            log_info(f"[TEST2] accounts: {accounts}")
+            # Use existing helpers — same as _ensure_connected does
+            account_id = _deriv_get_account_id(token, app_id, demo)
+            if not account_id:
+                return jsonify({"error": "Could not get account_id"}), 500
+            log_info(f"[TEST2] account_id={account_id}")
 
-            demo_accs = [a for a in accounts.get("accounts", [])
-                         if a.get("account_type") == "demo"]
-            if not demo_accs:
-                return jsonify({"error": "No demo account found"}), 500
-            account_id = demo_accs[0]["account_id"]
-            log_info(f"[TEST2] Using account: {account_id}")
-
-            # ── Step 2: Fetch OTP ─────────────────────────────────────
-            otp_req = _ureq.Request(
-                f"{base}/accounts/{account_id}/otp",
-                data=b"{}",
-                method="POST",
-                headers={"Authorization": f"Bearer {token}",
-                         "Content-Type": "application/json"},
-            )
-            with _ureq.urlopen(otp_req, timeout=10) as r:
-                otp_data = _j.loads(r.read())
-            ws_url = otp_data.get("url", "")
-            log_info(f"[TEST2] OTP WS URL len={len(ws_url)}")
+            ws_url = _deriv_get_otp_url(token, app_id, account_id)
             if not ws_url:
-                return jsonify({"error": "No OTP URL returned"}), 500
+                return jsonify({"error": "Could not get OTP URL"}), 500
+            log_info(f"[TEST2] Got OTP URL len={len(ws_url)}")
 
-            # ── Step 3: Connect to OTP WS ─────────────────────────────
-            # Parse wss://api.derivws.com/trading/v1/options/ws/demo?otp=...
-            from urllib.parse import urlparse
-            parsed = urlparse(ws_url)
-            host   = parsed.hostname
-            path   = parsed.path + ("?" + parsed.query if parsed.query else "")
+            # Fresh isolated WS client
+            ws = DerivWSClient(ws_url)
+            if not ws.connect():
+                return jsonify({"error": "WS connect failed"}), 500
+            log_info(f"[TEST2] Connected")
 
-            ctx  = _ssl2.create_default_context()
-            raw  = _sock2.create_connection((host, 443), timeout=10)
-            sock = ctx.wrap_socket(raw, server_hostname=host)
-            sock.settimeout(15.0)
+            # contracts_for first
+            cf_id = int(time.time() * 1000) % 1000000
+            cf = ws.send_recv({
+                "contracts_for": "1HZ10V",
+                "currency":      "USD",
+                "req_id":        cf_id,
+            }, timeout=10)
+            log_info(f"[TEST2] contracts_for: msg_type={cf.get('msg_type') if cf else None} "
+                     f"error={cf.get('error') if cf else 'TIMEOUT'} "
+                     f"count={len((cf or {}).get('contracts_for', {}).get('available', []))}")
 
-            # WebSocket handshake
-            key = _b64.b64encode(os.urandom(16)).decode()
-            hs  = (f"GET {path} HTTP/1.1\r\n"
-                   f"Host: {host}\r\n"
-                   f"Upgrade: websocket\r\n"
-                   f"Connection: Upgrade\r\n"
-                   f"Sec-WebSocket-Key: {key}\r\n"
-                   f"Sec-WebSocket-Version: 13\r\n\r\n")
-            sock.sendall(hs.encode())
-            buf = b""
-            while b"\r\n\r\n" not in buf:
-                buf += sock.recv(1024)
-            log_info(f"[TEST2] WS handshake done")
-
-            def _send(s, msg):
-                d = msg.encode()
-                m = os.urandom(4)
-                n = len(d)
-                h = bytearray([0x81, 0x80 | n]) if n < 126 else \
-                    bytearray([0x81, 0xFE]) + bytearray(_st.pack(">H", n))
-                h += m
-                s.sendall(bytes(h) + bytes(b ^ m[i % 4]
-                                           for i, b in enumerate(d)))
-
-            def _recv(s):
-                hdr = b""
-                while len(hdr) < 2:
-                    hdr += s.recv(2 - len(hdr))
-                n = hdr[1] & 0x7F
-                if n == 126:
-                    ext = b""
-                    while len(ext) < 2:
-                        ext += s.recv(2 - len(ext))
-                    n = _st.unpack(">H", ext)[0]
-                pl = b""
-                while len(pl) < n:
-                    pl += s.recv(n - len(pl))
-                return pl.decode()
-
-            # ── Step 4: Send contracts_for ────────────────────────────
-            _send(sock, _j.dumps({"contracts_for": "1HZ10V",
-                                  "currency": "USD", "req_id": 1}))
-            cf = _j.loads(_recv(sock))
-            log_info(f"[TEST2] contracts_for msg_type={cf.get('msg_type')} "
-                     f"error={cf.get('error')} "
-                     f"count={len(cf.get('contracts_for',{}).get('available',[]))}")
-
-            # ── Step 5: Send proposal ─────────────────────────────────
+            # proposal
+            prop_id = cf_id + 1
             proposal = {
-                "proposal": 1, "amount": 1.0, "basis": "stake",
-                "contract_type": "MULTUP", "currency": "USD",
-                "duration": 5, "duration_unit": "t",
-                "multiplier": 40, "underlying_symbol": "1HZ10V",
-                "subscribe": 0, "req_id": 2,
+                "proposal":          1,
+                "amount":            1.0,
+                "basis":             "stake",
+                "contract_type":     "MULTUP",
+                "currency":          "USD",
+                "duration":          5,
+                "duration_unit":     "t",
+                "multiplier":        40,
+                "underlying_symbol": "1HZ10V",
+                "subscribe":         0,
+                "req_id":            prop_id,
             }
-            log_info(f"[TEST2] Sending proposal: {_j.dumps(proposal)}")
-            t0 = _t.time()
-            _send(sock, _j.dumps(proposal))
-            pr = _j.loads(_recv(sock))
-            elapsed = _t.time() - t0
+            log_info(f"[TEST2] Sending proposal: {json.dumps(proposal)}")
+            t0 = time.time()
+            pr = ws.send_recv(proposal, timeout=15)
+            elapsed = time.time() - t0
             log_info(f"[TEST2] Proposal after {elapsed:.2f}s: {pr}")
-            sock.close()
+
+            ws.disconnect()
 
             return jsonify({
-                "elapsed":       round(elapsed, 2),
-                "msg_type":      pr.get("msg_type"),
-                "error":         pr.get("error"),
-                "proposal":      pr.get("proposal"),
-                "contracts_for_count": len(cf.get("contracts_for", {})
-                                             .get("available", [])),
+                "elapsed":              round(elapsed, 2),
+                "msg_type":             pr.get("msg_type") if pr else None,
+                "error":                pr.get("error") if pr else "TIMEOUT",
+                "proposal":             pr.get("proposal") if pr else None,
+                "contracts_for_count":  len((cf or {}).get("contracts_for", {})
+                                            .get("available", [])),
             }), 200
 
         except Exception as e:
