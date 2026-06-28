@@ -5357,7 +5357,6 @@ if FLASK_OK:
             cf_id = int(time.time() * 1000) % 1000000
             cf = ws.send_recv({
                 "contracts_for": "1HZ10V",
-                "currency":      "USD",
                 "req_id":        cf_id,
             }, timeout=10)
             log_info(f"[TEST2] contracts_for: msg_type={cf.get('msg_type') if cf else None} "
